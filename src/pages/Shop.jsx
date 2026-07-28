@@ -1,0 +1,255 @@
+import React, { useEffect, useState, useMemo, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
+import { SlidersHorizontal, X, ChevronDown, Check } from "lucide-react";
+import { base44 } from "@/api/base44Client";
+import ProductCard from "@/components/store/ProductCard";
+import Reveal from "@/components/store/Reveal";
+
+const SORTS = [
+  { value: "newest", label: "Newest" },
+  { value: "popular", label: "Popular" },
+  { value: "price_asc", label: "Lowest Price" },
+  { value: "price_desc", label: "Highest Price" },
+  { value: "name_asc", label: "Name A-Z" },
+  { value: "name_desc", label: "Name Z-A" },
+];
+
+const ALL_SIZES = ["XS", "S", "M", "L", "XL", "XXL", "ONE SIZE"];
+const ALL_COLORS = ["Black", "White", "Grey", "Charcoal", "Sand", "Navy"];
+
+export default function Shop() {
+  const [params, setParams] = useSearchParams();
+  const [all, setAll] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 12;
+
+  const filters = {
+    category: params.getAll("category"),
+    gender: params.getAll("gender"),
+    brand: params.getAll("brand"),
+    color: params.getAll("color"),
+    size: params.getAll("size"),
+    minPrice: params.get("minPrice") ? Number(params.get("minPrice")) : null,
+    maxPrice: params.get("maxPrice") ? Number(params.get("maxPrice")) : null,
+    discount: params.get("discount") === "1",
+    filter: params.get("filter"),
+  };
+  const sort = params.get("sort") || "newest";
+
+  const [categories, setCategories] = useState([]);
+  const [brands, setBrands] = useState([]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const [list, cats, brs] = await Promise.all([
+          base44.entities.Product.list("-created_date", 200),
+          base44.entities.Category.list("-created_date", 50),
+          base44.entities.Brand.list("-created_date", 50),
+        ]);
+        setAll(list.filter((p) => p.status !== "archived"));
+        setCategories(cats);
+        setBrands(brs);
+      } catch (e) { console.error(e); }
+      setLoading(false);
+    })();
+  }, []);
+
+  const toggleMulti = useCallback((key, value) => {
+    const current = params.getAll(key);
+    const next = current.includes(value) ? current.filter((v) => v !== value) : [...current, value];
+    const newParams = new URLSearchParams(params);
+    newParams.delete(key);
+    next.forEach((v) => newParams.append(key, v));
+    setPage(1);
+    setParams(newParams);
+  }, [params, setParams]);
+
+  const setSingle = useCallback((key, value) => {
+    const newParams = new URLSearchParams(params);
+    if (value) newParams.set(key, value); else newParams.delete(key);
+    setPage(1);
+    setParams(newParams);
+  }, [params, setParams]);
+
+  const clearAll = () => { setParams(new URLSearchParams()); setPage(1); };
+
+  const filtered = useMemo(() => {
+    let r = [...all];
+    if (filters.category.length) r = r.filter((p) => filters.category.some((c) => (p.category_name || "").toLowerCase() === c.toLowerCase() || (p.category_id || "") === c));
+    if (filters.gender.length) r = r.filter((p) => filters.gender.includes(p.gender));
+    if (filters.brand.length) r = r.filter((p) => filters.brand.includes(p.brand_id));
+    if (filters.color.length) r = r.filter((p) => (p.colors || []).some((c) => filters.color.some((fc) => c.toLowerCase().includes(fc.toLowerCase()))));
+    if (filters.size.length) r = r.filter((p) => (p.sizes || []).some((s) => filters.size.includes(s)));
+    if (filters.minPrice != null) r = r.filter((p) => (p.discount_price ?? p.price) >= filters.minPrice);
+    if (filters.maxPrice != null) r = r.filter((p) => (p.discount_price ?? p.price) <= filters.maxPrice);
+    if (filters.discount) r = r.filter((p) => p.discount_price != null && p.discount_price < p.price);
+    if (filters.filter === "new") r = r.filter((p) => p.is_new);
+    if (filters.filter === "best") r = r.filter((p) => p.is_best_seller);
+
+    switch (sort) {
+      case "price_asc": r.sort((a, b) => (a.discount_price ?? a.price) - (b.discount_price ?? b.price)); break;
+      case "price_desc": r.sort((a, b) => (b.discount_price ?? b.price) - (a.discount_price ?? a.price)); break;
+      case "name_asc": r.sort((a, b) => a.name.localeCompare(b.name)); break;
+      case "name_desc": r.sort((a, b) => b.name.localeCompare(a.name)); break;
+      case "popular": r.sort((a, b) => (b.is_best_seller ? 1 : 0) - (a.is_best_seller ? 1 : 0)); break;
+      default: r.sort((a, b) => new Date(b.created_date) - new Date(a.created_date));
+    }
+    return r;
+  }, [all, filters, sort]);
+
+  const paged = filtered.slice(0, page * PAGE_SIZE);
+  const activeCount = filters.category.length + filters.gender.length + filters.brand.length + filters.color.length + filters.size.length + (filters.minPrice != null ? 1 : 0) + (filters.maxPrice != null ? 1 : 0) + (filters.discount ? 1 : 0);
+
+  const FilterSection = ({ title, children }) => (
+    <div className="border-b hairline py-5">
+      <p className="label-mono text-muted-foreground mb-3">{title}</p>
+      {children}
+    </div>
+  );
+
+  const CheckRow = ({ active, onClick, label }) => (
+    <button onClick={onClick} className="flex items-center gap-2.5 py-1.5 w-full text-left text-sm hover:opacity-70 transition-opacity">
+      <span className={`w-4 h-4 border hairline flex items-center justify-center ${active ? "bg-foreground" : ""}`}>
+        {active && <Check size={11} className="text-background" strokeWidth={3} />}
+      </span>
+      {label}
+    </button>
+  );
+
+  const FilterPanel = () => (
+    <div>
+      <FilterSection title="Gender">
+        {["men", "women", "unisex"].map((g) => (
+          <CheckRow key={g} active={filters.gender.includes(g)} onClick={() => toggleMulti("gender", g)} label={g.charAt(0).toUpperCase() + g.slice(1)} />
+        ))}
+      </FilterSection>
+      <FilterSection title="Category">
+        {categories.map((c) => (
+          <CheckRow key={c.id} active={filters.category.includes(c.id) || filters.category.includes(c.name)} onClick={() => toggleMulti("category", c.name)} label={c.name} />
+        ))}
+        {categories.length === 0 && ["Outerwear", "Shirting", "Trousers", "Knitwear"].map((c) => (
+          <CheckRow key={c} active={filters.category.includes(c)} onClick={() => toggleMulti("category", c)} label={c} />
+        ))}
+      </FilterSection>
+      <FilterSection title="Brand">
+        {brands.map((b) => (
+          <CheckRow key={b.id} active={filters.brand.includes(b.id)} onClick={() => toggleMulti("brand", b.id)} label={b.name} />
+        ))}
+        {brands.length === 0 && <p className="text-xs text-muted-foreground">No brands.</p>}
+      </FilterSection>
+      <FilterSection title="Color">
+        <div className="flex flex-wrap gap-2">
+          {ALL_COLORS.map((c) => (
+            <button key={c} onClick={() => toggleMulti("color", c)} className={`px-3 py-1.5 border hairline label-mono text-[10px] ${filters.color.includes(c) ? "bg-foreground text-background" : ""}`}>{c}</button>
+          ))}
+        </div>
+      </FilterSection>
+      <FilterSection title="Size">
+        <div className="flex flex-wrap gap-2">
+          {ALL_SIZES.map((s) => (
+            <button key={s} onClick={() => toggleMulti("size", s)} className={`px-3 py-1.5 border hairline label-mono text-[10px] ${filters.size.includes(s) ? "bg-foreground text-background" : ""}`}>{s}</button>
+          ))}
+        </div>
+      </FilterSection>
+      <FilterSection title="Price Range">
+        <div className="flex items-center gap-2">
+          <input type="number" placeholder="Min" defaultValue={filters.minPrice ?? ""} onBlur={(e) => setSingle("minPrice", e.target.value)} className="w-full border hairline px-3 py-2 font-mono text-xs outline-none" />
+          <span className="text-muted-foreground">—</span>
+          <input type="number" placeholder="Max" defaultValue={filters.maxPrice ?? ""} onBlur={(e) => setSingle("maxPrice", e.target.value)} className="w-full border hairline px-3 py-2 font-mono text-xs outline-none" />
+        </div>
+      </FilterSection>
+      <FilterSection title="Offers">
+        <CheckRow active={filters.discount} onClick={() => setSingle("discount", filters.discount ? "" : "1")} label="On Sale Only" />
+      </FilterSection>
+      {activeCount > 0 && (
+        <button onClick={clearAll} className="label-mono text-muted-foreground hover:text-foreground mt-4 underline underline-offset-4">Clear all filters</button>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="bg-background">
+      {/* Header */}
+      <div className="border-b hairline">
+        <div className="max-w-[1400px] mx-auto px-4 md:px-8 py-10 md:py-14">
+          <p className="label-mono text-muted-foreground mb-3">— The Collection</p>
+          <h1 className="font-display text-5xl md:text-7xl tracking-[-0.05em]">Shop.</h1>
+          <p className="text-muted-foreground mt-3 text-sm">{filtered.length} objects{activeCount > 0 ? ` · ${activeCount} filter${activeCount > 1 ? "s" : ""} active` : ""}</p>
+        </div>
+      </div>
+
+      <div className="max-w-[1400px] mx-auto px-4 md:px-8 grid md:grid-cols-[230px_1fr] gap-10 py-10">
+        {/* Desktop sidebar */}
+        <aside className="hidden md:block sticky top-24 self-start max-h-[calc(100vh-7rem)] overflow-y-auto no-scrollbar">
+          <FilterPanel />
+        </aside>
+
+        <div>
+          {/* Toolbar */}
+          <div className="flex items-center justify-between mb-8 pb-4 border-b hairline">
+            <button onClick={() => setFilterOpen(true)} className="flex items-center gap-2 label-mono md:hidden">
+              <SlidersHorizontal size={14} /> Filters {activeCount > 0 && `(${activeCount})`}
+            </button>
+            <span className="hidden md:block label-mono text-muted-foreground">Showing {paged.length} of {filtered.length}</span>
+            <div className="relative">
+              <select
+                value={sort}
+                onChange={(e) => { setSingle("sort", e.target.value); }}
+                className="appearance-none border hairline pl-3 pr-9 py-2 label-mono bg-background outline-none cursor-pointer"
+              >
+                {SORTS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+              </select>
+              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
+          </div>
+
+          {loading ? (
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-x-5 gap-y-10">
+              {[...Array(6)].map((_, i) => <div key={i} className="aspect-[4/5] bg-muted animate-pulse" />)}
+            </div>
+          ) : paged.length === 0 ? (
+            <div className="py-24 text-center">
+              <p className="font-display text-3xl tracking-[-0.04em]">No objects found.</p>
+              <p className="text-muted-foreground mt-2 text-sm">Adjust your filters to broaden the collection.</p>
+              {activeCount > 0 && <button onClick={clearAll} className="label-mono underline underline-offset-4 mt-4">Clear filters</button>}
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-x-5 gap-y-10">
+              {paged.map((p, i) => (
+                <Reveal key={p.id} delay={(i % 3) * 60}>
+                  <ProductCard product={p} index={i} />
+                </Reveal>
+              ))}
+            </div>
+          )}
+
+          {!loading && paged.length < filtered.length && (
+            <div className="flex justify-center mt-14">
+              <button onClick={() => setPage((p) => p + 1)} className="border hairline px-8 py-4 label-mono hover:bg-foreground hover:text-background transition-colors">
+                Load More ({filtered.length - paged.length})
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Mobile filter drawer */}
+      {filterOpen && (
+        <div className="fixed inset-0 z-[70] md:hidden">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setFilterOpen(false)} />
+          <div className="absolute left-0 top-0 bottom-0 w-[85%] max-w-sm bg-background p-6 overflow-y-auto inertia-up">
+            <div className="flex items-center justify-between mb-6">
+              <span className="font-display text-lg tracking-[-0.04em]">Filters</span>
+              <button onClick={() => setFilterOpen(false)}><X size={18} /></button>
+            </div>
+            <FilterPanel />
+            <button onClick={() => setFilterOpen(false)} className="w-full bg-foreground text-background py-4 label-mono mt-6">Show {filtered.length} Results</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
