@@ -1,14 +1,17 @@
 import React, { useEffect, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { Heart, Minus, Plus, ShoppingBag, ChevronRight, Truck, RotateCcw, Shield } from "lucide-react";
-import { base44 } from "@/api/base44Client";
-import { Image } from "@/components/ui/image";
+import { supabase } from "@/lib/supabase";
+import { Image as BaseImage } from "@/components/ui/image";
 import { useCart } from "@/lib/cart-context";
 import ProductCard from "@/components/store/ProductCard";
 import Reveal from "@/components/store/Reveal";
 
+/** @type {any} */
+const Image = BaseImage;
+
 // Generate a Code-128-style barcode visual from the barcode string
-function BarcodeSVG({ value }) {
+function BarcodeSVG(/** @type {{ value: string }} */ { value }) {
   if (!value) return null;
   const bars = [];
   let x = 0;
@@ -28,29 +31,57 @@ function BarcodeSVG({ value }) {
 export default function ProductDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { addItem, toggleWishlist, isInWishlist, openDrawer } = useCart();
-  const [product, setProduct] = useState(null);
-  const [related, setRelated] = useState([]);
+  // Fix for ts(2349): cast the context return to 'any'
+  const { addItem, toggleWishlist, isInWishlist } = /** @type {any} */ (useCart());
+  const [product, setProduct] = useState(/** @type {any} */ (null));
+  const [related, setRelated] = useState(/** @type {any[]} */ ([]));
   const [loading, setLoading] = useState(true);
   const [activeImg, setActiveImg] = useState(0);
-  const [size, setSize] = useState(null);
-  const [color, setColor] = useState(null);
+  const [size, setSize] = useState(/** @type {string | null} */ (null));
+  const [color, setColor] = useState(/** @type {string | null} */ (null));
   const [qty, setQty] = useState(1);
   const [showBarcode, setShowBarcode] = useState(false);
   const [descOpen, setDescOpen] = useState(false);
 
   useEffect(() => {
+    if (!id) return;
     setLoading(true);
     setActiveImg(0); setSize(null); setColor(null); setQty(1);
+    
     (async () => {
       try {
-        const p = await base44.entities.Product.get(id);
+        // Fetch current product
+        const { data: p, error } = await supabase
+          .from('products')
+          .select('*')
+          .eq('id', id)
+          .single();
+          
+        if (error) throw error;
+        
         setProduct(p);
         if (p.colors?.length) setColor(p.colors[0]);
         if (p.sizes?.length) setSize(p.sizes[0]);
-        const all = await base44.entities.Product.list("-created_date", 60);
-        setRelated(all.filter((x) => x.id !== p.id && (x.gender === p.gender || x.category_id === p.category_id)).slice(0, 4));
-      } catch (e) { console.error(e); }
+
+        // Fetch related products (same category or gender, excluding current)
+        const { data: all } = await supabase
+          .from('products')
+          .select('*')
+          .neq('id', id)
+          .neq('status', 'archived')
+          .order('created_at', { ascending: false })
+          .limit(60);
+
+        if (all) {
+          setRelated(
+            all.filter((/** @type {any} */ x) => 
+              x.gender === p.gender || x.category_id === p.category_id
+            ).slice(0, 4)
+          );
+        }
+      } catch (e) { 
+        console.error("Error fetching product:", e); 
+      }
       setLoading(false);
     })();
   }, [id]);
@@ -82,6 +113,7 @@ export default function ProductDetail() {
   const handleAdd = () => {
     addItem(product, { size: size || "ONE SIZE", color: color || "Default", quantity: qty });
   };
+  
   const handleBuyNow = () => {
     handleAdd();
     navigate("/checkout");
@@ -105,7 +137,7 @@ export default function ProductDetail() {
         <div className="flex flex-col-reverse md:flex-row gap-4 md:sticky md:top-24 md:self-start md:max-h-[calc(100vh-7rem)] md:overflow-y-auto no-scrollbar">
           {images.length > 1 && (
             <div className="flex md:flex-col gap-3 md:max-h-[60vh] md:overflow-y-auto no-scrollbar">
-              {images.map((img, i) => (
+              {images.map((/** @type {any} */ img, /** @type {number} */ i) => (
                 <button
                   key={i}
                   onClick={() => setActiveImg(i)}
@@ -181,7 +213,7 @@ export default function ProductDetail() {
             <div className="mt-6">
               <p className="label-mono text-muted-foreground mb-3">Color — <span className="text-foreground">{color}</span></p>
               <div className="flex flex-wrap gap-2">
-                {product.colors.map((c) => (
+                {product.colors.map((/** @type {string} */ c) => (
                   <button
                     key={c}
                     onClick={() => setColor(c)}
@@ -200,7 +232,7 @@ export default function ProductDetail() {
                 <button className="label-mono text-muted-foreground underline underline-offset-4 text-[10px]">Size Guide</button>
               </div>
               <div className="flex flex-wrap gap-2">
-                {product.sizes.map((s) => (
+                {product.sizes.map((/** @type {string} */ s) => (
                   <button
                     key={s}
                     onClick={() => setSize(s)}
@@ -283,7 +315,7 @@ export default function ProductDetail() {
               <h2 className="font-display text-4xl md:text-6xl tracking-[-0.04em]">You May Also Covet.</h2>
             </Reveal>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-x-5 gap-y-10">
-              {related.map((p, i) => (
+              {related.map((/** @type {any} */ p, /** @type {number} */ i) => (
                 <Reveal key={p.id} delay={(i % 4) * 70}>
                   <ProductCard product={p} index={i} />
                 </Reveal>

@@ -1,25 +1,39 @@
 import React, { useState } from "react";
 import { useOutletContext } from "react-router-dom";
-import { base44 } from "@/api/base44Client";
+import { supabase } from "@/lib/supabase";
 import { Check } from "lucide-react";
 
 export default function AccountProfile() {
-  const { user, reloadUser } = useOutletContext();
-  const [displayName, setDisplayName] = useState(user.data?.display_name || "");
-  const [phone, setPhone] = useState(user.data?.phone || "");
+  const { user, reloadUser } = /** @type {any} */ (useOutletContext());
+  const [displayName, setDisplayName] = useState(user?.full_name || "");
+  const [phone, setPhone] = useState(user?.phone || "");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  const save = async (e) => {
+  const save = async (/** @type {React.FormEvent} */ e) => {
     e.preventDefault();
-    setSaving(true); setSaved(false);
-    await base44.auth.updateMe({ display_name: displayName.trim(), phone: phone.trim() });
-    await reloadUser();
-    setSaving(false); setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
+    if (!user?.id) return;
+    
+    setSaving(true); 
+    setSaved(false);
+    
+    try {
+      await supabase
+        .from('profiles')
+        .update({ full_name: displayName.trim(), phone: phone.trim() })
+        .eq('id', user.id);
+        
+      await reloadUser();
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch (err) {
+      console.error("Error updating profile:", err);
+    } finally {
+      setSaving(false); 
+    }
   };
 
-  const joined = user.created_date ? new Date(user.created_date).toLocaleDateString("en-US", { year: "numeric", month: "long" }) : "—";
+  const joined = user?.created_at ? new Date(user.created_at).toLocaleDateString("en-US", { year: "numeric", month: "long" }) : "—";
 
   return (
     <div className="space-y-10">
@@ -27,8 +41,8 @@ export default function AccountProfile() {
         <h2 className="font-display text-2xl tracking-[-0.04em] mb-6">Details</h2>
         <div className="border hairline divide-y hairline">
           {[
-            ["Email", user.email],
-            ["Role", user.role],
+            ["Email", user?.email || "—"],
+            ["Role", user?.role || "Customer"],
             ["Member since", joined],
           ].map(([k, v]) => (
             <div key={k} className="px-5 py-4 flex items-center justify-between">

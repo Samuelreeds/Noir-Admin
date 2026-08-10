@@ -1,30 +1,37 @@
 import React, { useEffect, useState } from "react";
 import { Printer, RefreshCw, Search } from "lucide-react";
-import { base44 } from "@/api/base44Client";
+import { supabase } from "@/lib/supabase";
 import BarcodeSVG from "@/components/admin/BarcodeSVG";
 
 export default function AdminBarcodes() {
-  const [products, setProducts] = useState([]);
+  const [products, setProducts] = useState(/** @type {any[]} */ ([]));
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
-  const [selected, setSelected] = useState([]);
+  const [selected, setSelected] = useState(/** @type {string[]} */ ([]));
   const [custom, setCustom] = useState("");
 
   const load = async () => {
     setLoading(true);
-    try { setProducts(await base44.entities.Product.list("-created_date", 200)); }
-    catch (e) { console.error(e); }
+    try { 
+      const { data, error } = await supabase.from('products').select('*').order('created_at', { ascending: false }).limit(200);
+      if (error) throw error;
+      setProducts(data || []); 
+    }
+    catch (e) { 
+      console.error(e); 
+    }
     setLoading(false);
   };
+  
   useEffect(() => { load(); }, []);
 
-  const filtered = products.filter((p) => !query || p.name?.toLowerCase().includes(query.toLowerCase()) || p.sku?.toLowerCase().includes(query.toLowerCase()));
+  const filtered = products.filter((/** @type {any} */ p) => !query || p.name?.toLowerCase().includes(query.toLowerCase()) || p.sku?.toLowerCase().includes(query.toLowerCase()));
 
-  const toggle = (id) => setSelected((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
-  const selectAll = () => setSelected(filtered.map((p) => p.id));
+  const toggle = (/** @type {string} */ id) => setSelected((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
+  const selectAll = () => setSelected(filtered.map((/** @type {any} */ p) => p.id));
   const clearAll = () => setSelected([]);
 
-  const labelProducts = products.filter((p) => selected.includes(p.id));
+  const labelProducts = products.filter((/** @type {any} */ p) => selected.includes(p.id));
   const customValue = custom.trim() || `MA-${Date.now().toString().slice(-8)}`;
 
   const print = () => window.print();
@@ -69,14 +76,14 @@ export default function AdminBarcodes() {
           </div>
 
           <div className="border hairline max-h-[360px] overflow-y-auto divide-y hairline">
-            {filtered.map((p) => (
+            {filtered.map((/** @type {any} */ p) => (
               <label key={p.id} className="flex items-center gap-4 px-4 py-3 hover:bg-muted/40 cursor-pointer">
                 <input type="checkbox" checked={selected.includes(p.id)} onChange={() => toggle(p.id)} className="w-4 h-4 accent-foreground" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm truncate">{p.name}</p>
                   <p className="label-mono text-muted-foreground text-[9px]">SKU {p.sku || "—"} · Barcode {p.barcode || "—"}</p>
                 </div>
-                <span className="font-mono text-xs text-muted-foreground">${p.price.toFixed(2)}</span>
+                <span className="font-mono text-xs text-muted-foreground">${(p.price || 0).toFixed(2)}</span>
               </label>
             ))}
           </div>
@@ -90,10 +97,10 @@ export default function AdminBarcodes() {
           <p className="text-sm text-muted-foreground">Select products to generate a printable label sheet.</p>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
-            {labelProducts.map((p) => (
+            {labelProducts.map((/** @type {any} */ p) => (
               <div key={p.id} className="border hairline p-4 text-center bg-white">
                 <p className="text-[10px] truncate mb-1">{p.name}</p>
-                <p className="label-mono text-muted-foreground text-[8px] mb-2">${p.price.toFixed(2)}</p>
+                <p className="label-mono text-muted-foreground text-[8px] mb-2">${(p.price || 0).toFixed(2)}</p>
                 <BarcodeSVG value={p.barcode || p.sku || p.id.slice(-10)} height={56} />
               </div>
             ))}

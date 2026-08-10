@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
-import { base44 } from "@/api/base44Client";
+import { supabase } from "@/lib/supabase";
 
 export default function AdminCatalog() {
-  const [categories, setCategories] = useState([]);
-  const [brands, setBrands] = useState([]);
+  const [categories, setCategories] = useState(/** @type {any[]} */ ([]));
+  const [brands, setBrands] = useState(/** @type {any[]} */ ([]));
   const [loading, setLoading] = useState(true);
   const [catName, setCatName] = useState("");
   const [brandName, setBrandName] = useState("");
@@ -13,29 +13,54 @@ export default function AdminCatalog() {
     setLoading(true);
     try {
       const [cs, bs] = await Promise.all([
-        base44.entities.Category.list("-created_date", 100),
-        base44.entities.Brand.list("-created_date", 100),
+        supabase.from('categories').select('*').order('created_at', { ascending: false }).limit(100),
+        supabase.from('brands').select('*').order('created_at', { ascending: false }).limit(100),
       ]);
-      setCategories(cs); setBrands(bs);
-    } catch (e) { console.error(e); }
+      setCategories(cs.data || []); 
+      setBrands(bs.data || []);
+    } catch (e) { 
+      console.error(e); 
+    }
     setLoading(false);
   };
+  
   useEffect(() => { load(); }, []);
 
-  const addCategory = async (e) => {
+  const addCategory = async (/** @type {React.FormEvent} */ e) => {
     e.preventDefault();
     if (!catName.trim()) return;
-    await base44.entities.Category.create({ name: catName.trim(), slug: catName.trim().toLowerCase().replace(/\s+/g, "-") });
-    setCatName(""); load();
+    await supabase.from('categories').insert({ 
+      name: catName.trim(), 
+      slug: catName.trim().toLowerCase().replace(/\s+/g, "-") 
+    });
+    setCatName(""); 
+    load();
   };
-  const addBrand = async (e) => {
+
+  const addBrand = async (/** @type {React.FormEvent} */ e) => {
     e.preventDefault();
     if (!brandName.trim()) return;
-    await base44.entities.Brand.create({ name: brandName.trim(), slug: brandName.trim().toLowerCase().replace(/\s+/g, "-") });
-    setBrandName(""); load();
+    await supabase.from('brands').insert({ 
+      name: brandName.trim(), 
+      slug: brandName.trim().toLowerCase().replace(/\s+/g, "-") 
+    });
+    setBrandName(""); 
+    load();
   };
-  const delCat = async (c) => { if (confirm(`Delete category "${c.name}"?`)) { await base44.entities.Category.delete(c.id); load(); } };
-  const delBrand = async (b) => { if (confirm(`Delete brand "${b.name}"?`)) { await base44.entities.Brand.delete(b.id); load(); } };
+
+  const delCat = async (/** @type {any} */ c) => { 
+    if (window.confirm(`Delete category "${c.name}"?`)) { 
+      await supabase.from('categories').delete().eq('id', c.id); 
+      load(); 
+    } 
+  };
+  
+  const delBrand = async (/** @type {any} */ b) => { 
+    if (window.confirm(`Delete brand "${b.name}"?`)) { 
+      await supabase.from('brands').delete().eq('id', b.id); 
+      load(); 
+    } 
+  };
 
   if (loading) {
     return <div className="min-h-[60vh] flex items-center justify-center"><div className="w-6 h-6 border border-foreground border-t-transparent rounded-full animate-spin" /></div>;
@@ -60,7 +85,7 @@ export default function AdminCatalog() {
             <button type="submit" className="bg-foreground text-background px-4 py-2.5 label-mono flex items-center gap-1.5"><Plus size={14} /> Add</button>
           </form>
           <div className="divide-y hairline">
-            {categories.map((c) => (
+            {categories.map((/** @type {any} */ c) => (
               <div key={c.id} className="px-5 py-3 flex items-center justify-between">
                 <div>
                   <p className="text-sm">{c.name}</p>
@@ -84,7 +109,7 @@ export default function AdminCatalog() {
             <button type="submit" className="bg-foreground text-background px-4 py-2.5 label-mono flex items-center gap-1.5"><Plus size={14} /> Add</button>
           </form>
           <div className="divide-y hairline">
-            {brands.map((b) => (
+            {brands.map((/** @type {any} */ b) => (
               <div key={b.id} className="px-5 py-3 flex items-center justify-between">
                 <div>
                   <p className="text-sm">{b.name}</p>

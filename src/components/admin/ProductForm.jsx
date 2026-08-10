@@ -1,26 +1,26 @@
 import React, { useEffect, useState } from "react";
 import { X } from "lucide-react";
-import { base44 } from "@/api/base44Client";
+import { supabase } from "@/lib/supabase";
 
 const GENDERS = ["unisex", "men", "women"];
-const STATUSES = ["active", "archived"];
+const STATUSES = ["active", "archived", "draft"];
 
-export default function ProductForm({ open, onClose, onSaved, product, categories, brands }) {
+export default function ProductForm(/** @type {any} */ { open, onClose, onSaved, product, categories, brands }) {
   const isEdit = !!product;
   const [form, setForm] = useState({
-    name: "", slug: "", description: "", price: "", cost_price: "", discount_price: "",
+    name: "", description: "", price: "", cost_price: "", discount_price: "",
     sku: "", barcode: "", stock: "", material: "", gender: "unisex",
     sizes: "", colors: "", images: "", category_id: "", brand_id: "",
     status: "active", featured: false, is_new: false, is_best_seller: false,
   });
   const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState(null);
+  const [err, setErr] = useState(/** @type {string | null} */ (null));
 
   useEffect(() => {
     if (!open) return;
     if (product) {
       setForm({
-        name: product.name || "", slug: product.slug || "", description: product.description || "",
+        name: product.name || "", description: product.description || "",
         price: product.price ?? "", cost_price: product.cost_price ?? "", discount_price: product.discount_price ?? "",
         sku: product.sku || "", barcode: product.barcode || "", stock: product.stock ?? "",
         material: product.material || "", gender: product.gender || "unisex",
@@ -30,53 +30,61 @@ export default function ProductForm({ open, onClose, onSaved, product, categorie
         featured: !!product.featured, is_new: !!product.is_new, is_best_seller: !!product.is_best_seller,
       });
     } else {
-      setForm({ name: "", slug: "", description: "", price: "", cost_price: "", discount_price: "", sku: "", barcode: "", stock: "", material: "", gender: "unisex", sizes: "", colors: "", images: "", category_id: "", brand_id: "", status: "active", featured: false, is_new: false, is_best_seller: false });
+      setForm({ name: "", description: "", price: "", cost_price: "", discount_price: "", sku: "", barcode: "", stock: "", material: "", gender: "unisex", sizes: "", colors: "", images: "", category_id: "", brand_id: "", status: "active", featured: false, is_new: false, is_best_seller: false });
     }
     setErr(null);
   }, [open, product]);
 
   if (!open) return null;
 
-  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const set = (/** @type {string} */ k, /** @type {any} */ v) => setForm((f) => ({ ...f, [k]: v }));
 
-  const submit = async (e) => {
+  const submit = async (/** @type {React.FormEvent} */ e) => {
     e.preventDefault();
     setSaving(true); setErr(null);
     try {
+      const category = categories.find((/** @type {any} */ c) => c.id === form.category_id);
+      
       const payload = {
         name: form.name.trim(),
-        slug: form.slug.trim() || form.name.trim().toLowerCase().replace(/\s+/g, "-"),
         description: form.description.trim(),
         price: Number(form.price),
-        cost_price: form.cost_price ? Number(form.cost_price) : undefined,
-        discount_price: form.discount_price ? Number(form.discount_price) : undefined,
-        sku: form.sku.trim(),
-        barcode: form.barcode.trim(),
+        cost_price: form.cost_price ? Number(form.cost_price) : null,
+        discount_price: form.discount_price ? Number(form.discount_price) : null,
+        sku: form.sku.trim() || null,
+        barcode: form.barcode.trim() || null,
         stock: Number(form.stock) || 0,
-        material: form.material.trim(),
         gender: form.gender,
-        sizes: form.sizes.split(",").map((s) => s.trim()).filter(Boolean),
-        colors: form.colors.split(",").map((s) => s.trim()).filter(Boolean),
-        images: form.images.split("\n").map((s) => s.trim()).filter(Boolean),
-        category_id: form.category_id || undefined,
-        brand_id: form.brand_id || undefined,
+        sizes: form.sizes.split(",").map((/** @type {string} */ s) => s.trim()).filter(Boolean),
+        colors: form.colors.split(",").map((/** @type {string} */ s) => s.trim()).filter(Boolean),
+        images: form.images.split("\n").map((/** @type {string} */ s) => s.trim()).filter(Boolean),
+        category_id: form.category_id || null,
+        category_name: category ? category.name : null,
+        brand_id: form.brand_id || null,
         status: form.status,
         featured: form.featured,
         is_new: form.is_new,
         is_best_seller: form.is_best_seller,
       };
-      if (isEdit) await base44.entities.Product.update(product.id, payload);
-      else await base44.entities.Product.create(payload);
+
+      if (isEdit) {
+        const { error } = await supabase.from('products').update(payload).eq('id', product.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('products').insert(payload);
+        if (error) throw error;
+      }
+
       onSaved();
       onClose();
-    } catch (e) {
+    } catch (/** @type {any} */ e) {
       setErr(e.message || "Failed to save product");
     } finally {
       setSaving(false);
     }
   };
 
-  const field = (label, key, opts = {}) => (
+  const field = (/** @type {string} */ label, /** @type {string} */ key, opts = /** @type {any} */ ({})) => (
     <label className="block">
       <span className="label-mono text-muted-foreground text-[9px]">{label}</span>
       <input
@@ -98,7 +106,6 @@ export default function ProductForm({ open, onClose, onSaved, product, categorie
         </div>
         <form onSubmit={submit} className="px-6 py-6 space-y-5">
           {field("Name *", "name")}
-          {field("Slug", "slug")}
           <label className="block">
             <span className="label-mono text-muted-foreground text-[9px]">Description</span>
             <textarea value={form.description} onChange={(e) => set("description", e.target.value)} rows={3} className="mt-1.5 w-full border hairline px-3 py-2.5 text-sm bg-background focus:outline-none focus:border-foreground" />
@@ -114,7 +121,6 @@ export default function ProductForm({ open, onClose, onSaved, product, categorie
             {field("Stock", "stock", { type: "number" })}
           </div>
           <div className="grid grid-cols-2 gap-4">
-            {field("Material", "material")}
             <label className="block">
               <span className="label-mono text-muted-foreground text-[9px]">Gender</span>
               <select value={form.gender} onChange={(e) => set("gender", e.target.value)} className="mt-1.5 w-full border hairline px-3 py-2.5 text-sm bg-background focus:outline-none focus:border-foreground">
@@ -135,14 +141,14 @@ export default function ProductForm({ open, onClose, onSaved, product, categorie
               <span className="label-mono text-muted-foreground text-[9px]">Category</span>
               <select value={form.category_id} onChange={(e) => set("category_id", e.target.value)} className="mt-1.5 w-full border hairline px-3 py-2.5 text-sm bg-background focus:outline-none focus:border-foreground">
                 <option value="">—</option>
-                {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                {categories.map((/** @type {any} */ c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </label>
             <label className="block">
               <span className="label-mono text-muted-foreground text-[9px]">Brand</span>
               <select value={form.brand_id} onChange={(e) => set("brand_id", e.target.value)} className="mt-1.5 w-full border hairline px-3 py-2.5 text-sm bg-background focus:outline-none focus:border-foreground">
                 <option value="">—</option>
-                {brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                {brands.map((/** @type {any} */ b) => <option key={b.id} value={b.id}>{b.name}</option>)}
               </select>
             </label>
           </div>

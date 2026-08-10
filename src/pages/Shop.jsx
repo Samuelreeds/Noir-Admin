@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { SlidersHorizontal, X, ChevronDown, Check } from "lucide-react";
-import { base44 } from "@/api/base44Client";
+import { supabase } from "@/lib/supabase";
 import ProductCard from "@/components/store/ProductCard";
 import Reveal from "@/components/store/Reveal";
 
@@ -19,7 +19,7 @@ const ALL_COLORS = ["Black", "White", "Grey", "Charcoal", "Sand", "Navy"];
 
 export default function Shop() {
   const [params, setParams] = useSearchParams();
-  const [all, setAll] = useState([]);
+  const [all, setAll] = useState(/** @type {any[]} */ ([]));
   const [loading, setLoading] = useState(true);
   const [filterOpen, setFilterOpen] = useState(false);
   const [page, setPage] = useState(1);
@@ -38,36 +38,39 @@ export default function Shop() {
   };
   const sort = params.get("sort") || "newest";
 
-  const [categories, setCategories] = useState([]);
-  const [brands, setBrands] = useState([]);
+  const [categories, setCategories] = useState(/** @type {any[]} */ ([]));
+  const [brands, setBrands] = useState(/** @type {any[]} */ ([]));
 
   useEffect(() => {
     (async () => {
       try {
-        const [list, cats, brs] = await Promise.all([
-          base44.entities.Product.list("-created_date", 200),
-          base44.entities.Category.list("-created_date", 50),
-          base44.entities.Brand.list("-created_date", 50),
+        const [prodRes, catRes, brandRes] = await Promise.all([
+          supabase.from("products").select("*").neq("status", "archived").order("created_at", { ascending: false }).limit(200),
+          supabase.from("categories").select("*").order("created_at", { ascending: false }).limit(50),
+          supabase.from("brands").select("*").order("created_at", { ascending: false }).limit(50),
         ]);
-        setAll(list.filter((p) => p.status !== "archived"));
-        setCategories(cats);
-        setBrands(brs);
-      } catch (e) { console.error(e); }
+
+        if (prodRes.data) setAll(prodRes.data);
+        if (catRes.data) setCategories(catRes.data);
+        if (brandRes.data) setBrands(brandRes.data);
+      } catch (e) {
+        console.error(e);
+      }
       setLoading(false);
     })();
   }, []);
 
-  const toggleMulti = useCallback((key, value) => {
+  const toggleMulti = useCallback((/** @type {string} */ key, /** @type {string} */ value) => {
     const current = params.getAll(key);
-    const next = current.includes(value) ? current.filter((v) => v !== value) : [...current, value];
+    const next = current.includes(value) ? current.filter((/** @type {string} */ v) => v !== value) : [...current, value];
     const newParams = new URLSearchParams(params);
     newParams.delete(key);
-    next.forEach((v) => newParams.append(key, v));
+    next.forEach((/** @type {string} */ v) => newParams.append(key, v));
     setPage(1);
     setParams(newParams);
   }, [params, setParams]);
 
-  const setSingle = useCallback((key, value) => {
+  const setSingle = useCallback((/** @type {string} */ key, /** @type {string} */ value) => {
     const newParams = new URLSearchParams(params);
     if (value) newParams.set(key, value); else newParams.delete(key);
     setPage(1);
@@ -78,24 +81,32 @@ export default function Shop() {
 
   const filtered = useMemo(() => {
     let r = [...all];
-    if (filters.category.length) r = r.filter((p) => filters.category.some((c) => (p.category_name || "").toLowerCase() === c.toLowerCase() || (p.category_id || "") === c));
-    if (filters.gender.length) r = r.filter((p) => filters.gender.includes(p.gender));
-    if (filters.brand.length) r = r.filter((p) => filters.brand.includes(p.brand_id));
-    if (filters.color.length) r = r.filter((p) => (p.colors || []).some((c) => filters.color.some((fc) => c.toLowerCase().includes(fc.toLowerCase()))));
-    if (filters.size.length) r = r.filter((p) => (p.sizes || []).some((s) => filters.size.includes(s)));
-    if (filters.minPrice != null) r = r.filter((p) => (p.discount_price ?? p.price) >= filters.minPrice);
-    if (filters.maxPrice != null) r = r.filter((p) => (p.discount_price ?? p.price) <= filters.maxPrice);
-    if (filters.discount) r = r.filter((p) => p.discount_price != null && p.discount_price < p.price);
-    if (filters.filter === "new") r = r.filter((p) => p.is_new);
-    if (filters.filter === "best") r = r.filter((p) => p.is_best_seller);
+    if (filters.category.length) r = r.filter((/** @type {any} */ p) => filters.category.some((/** @type {string} */ c) => (p.category_name || "").toLowerCase() === c.toLowerCase() || (p.category_id || "") === c));
+    if (filters.gender.length) r = r.filter((/** @type {any} */ p) => filters.gender.includes(p.gender));
+    if (filters.brand.length) r = r.filter((/** @type {any} */ p) => filters.brand.includes(p.brand_id));
+    if (filters.color.length) r = r.filter((/** @type {any} */ p) => (p.colors || []).some((/** @type {string} */ c) => filters.color.some((/** @type {string} */ fc) => c.toLowerCase().includes(fc.toLowerCase()))));
+    if (filters.size.length) r = r.filter((/** @type {any} */ p) => (p.sizes || []).some((/** @type {string} */ s) => filters.size.includes(s)));
+    
+    if (filters.minPrice != null) {
+      const min = filters.minPrice;
+      r = r.filter((/** @type {any} */ p) => (p.discount_price ?? p.price) >= min);
+    }
+    if (filters.maxPrice != null) {
+      const max = filters.maxPrice;
+      r = r.filter((/** @type {any} */ p) => (p.discount_price ?? p.price) <= max);
+    }
+
+    if (filters.discount) r = r.filter((/** @type {any} */ p) => p.discount_price != null && p.discount_price < p.price);
+    if (filters.filter === "new") r = r.filter((/** @type {any} */ p) => p.is_new);
+    if (filters.filter === "best") r = r.filter((/** @type {any} */ p) => p.is_best_seller);
 
     switch (sort) {
-      case "price_asc": r.sort((a, b) => (a.discount_price ?? a.price) - (b.discount_price ?? b.price)); break;
-      case "price_desc": r.sort((a, b) => (b.discount_price ?? b.price) - (a.discount_price ?? a.price)); break;
-      case "name_asc": r.sort((a, b) => a.name.localeCompare(b.name)); break;
-      case "name_desc": r.sort((a, b) => b.name.localeCompare(a.name)); break;
-      case "popular": r.sort((a, b) => (b.is_best_seller ? 1 : 0) - (a.is_best_seller ? 1 : 0)); break;
-      default: r.sort((a, b) => new Date(b.created_date) - new Date(a.created_date));
+      case "price_asc": r.sort((/** @type {any} */ a, /** @type {any} */ b) => (a.discount_price ?? a.price) - (b.discount_price ?? b.price)); break;
+      case "price_desc": r.sort((/** @type {any} */ a, /** @type {any} */ b) => (b.discount_price ?? b.price) - (a.discount_price ?? a.price)); break;
+      case "name_asc": r.sort((/** @type {any} */ a, /** @type {any} */ b) => a.name.localeCompare(b.name)); break;
+      case "name_desc": r.sort((/** @type {any} */ a, /** @type {any} */ b) => b.name.localeCompare(a.name)); break;
+      case "popular": r.sort((/** @type {any} */ a, /** @type {any} */ b) => (b.is_best_seller ? 1 : 0) - (a.is_best_seller ? 1 : 0)); break;
+      default: r.sort((/** @type {any} */ a, /** @type {any} */ b) => new Date(b.created_at || b.created_date).getTime() - new Date(a.created_at || a.created_date).getTime());
     }
     return r;
   }, [all, filters, sort]);
@@ -103,6 +114,9 @@ export default function Shop() {
   const paged = filtered.slice(0, page * PAGE_SIZE);
   const activeCount = filters.category.length + filters.gender.length + filters.brand.length + filters.color.length + filters.size.length + (filters.minPrice != null ? 1 : 0) + (filters.maxPrice != null ? 1 : 0) + (filters.discount ? 1 : 0);
 
+  /**
+   * @param {{ title: string, children: React.ReactNode }} props
+   */
   const FilterSection = ({ title, children }) => (
     <div className="border-b hairline py-5">
       <p className="label-mono text-muted-foreground mb-3">{title}</p>
@@ -110,6 +124,9 @@ export default function Shop() {
     </div>
   );
 
+  /**
+   * @param {{ active: boolean, onClick: () => void, label: string }} props
+   */
   const CheckRow = ({ active, onClick, label }) => (
     <button onClick={onClick} className="flex items-center gap-2.5 py-1.5 w-full text-left text-sm hover:opacity-70 transition-opacity">
       <span className={`w-4 h-4 border hairline flex items-center justify-center ${active ? "bg-foreground" : ""}`}>
@@ -122,34 +139,34 @@ export default function Shop() {
   const FilterPanel = () => (
     <div>
       <FilterSection title="Gender">
-        {["men", "women", "unisex"].map((g) => (
+        {["men", "women", "unisex"].map((/** @type {string} */ g) => (
           <CheckRow key={g} active={filters.gender.includes(g)} onClick={() => toggleMulti("gender", g)} label={g.charAt(0).toUpperCase() + g.slice(1)} />
         ))}
       </FilterSection>
       <FilterSection title="Category">
-        {categories.map((c) => (
+        {categories.map((/** @type {any} */ c) => (
           <CheckRow key={c.id} active={filters.category.includes(c.id) || filters.category.includes(c.name)} onClick={() => toggleMulti("category", c.name)} label={c.name} />
         ))}
-        {categories.length === 0 && ["Outerwear", "Shirting", "Trousers", "Knitwear"].map((c) => (
+        {categories.length === 0 && ["Outerwear", "Shirting", "Trousers", "Knitwear"].map((/** @type {string} */ c) => (
           <CheckRow key={c} active={filters.category.includes(c)} onClick={() => toggleMulti("category", c)} label={c} />
         ))}
       </FilterSection>
       <FilterSection title="Brand">
-        {brands.map((b) => (
+        {brands.map((/** @type {any} */ b) => (
           <CheckRow key={b.id} active={filters.brand.includes(b.id)} onClick={() => toggleMulti("brand", b.id)} label={b.name} />
         ))}
         {brands.length === 0 && <p className="text-xs text-muted-foreground">No brands.</p>}
       </FilterSection>
       <FilterSection title="Color">
         <div className="flex flex-wrap gap-2">
-          {ALL_COLORS.map((c) => (
+          {ALL_COLORS.map((/** @type {string} */ c) => (
             <button key={c} onClick={() => toggleMulti("color", c)} className={`px-3 py-1.5 border hairline label-mono text-[10px] ${filters.color.includes(c) ? "bg-foreground text-background" : ""}`}>{c}</button>
           ))}
         </div>
       </FilterSection>
       <FilterSection title="Size">
         <div className="flex flex-wrap gap-2">
-          {ALL_SIZES.map((s) => (
+          {ALL_SIZES.map((/** @type {string} */ s) => (
             <button key={s} onClick={() => toggleMulti("size", s)} className={`px-3 py-1.5 border hairline label-mono text-[10px] ${filters.size.includes(s) ? "bg-foreground text-background" : ""}`}>{s}</button>
           ))}
         </div>
@@ -218,7 +235,7 @@ export default function Shop() {
             </div>
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-3 gap-x-5 gap-y-10">
-              {paged.map((p, i) => (
+              {paged.map((/** @type {any} */ p, /** @type {number} */ i) => (
                 <Reveal key={p.id} delay={(i % 3) * 60}>
                   <ProductCard product={p} index={i} />
                 </Reveal>

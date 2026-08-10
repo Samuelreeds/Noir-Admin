@@ -1,45 +1,58 @@
 import React, { useState } from "react";
 import { useOutletContext } from "react-router-dom";
-import { base44 } from "@/api/base44Client";
+import { supabase } from "@/lib/supabase";
 import { Plus, Pencil, Trash2, X, Check } from "lucide-react";
 
 const empty = { label: "", line1: "", city: "", state: "", postal_code: "", country: "", phone: "" };
 
 export default function AccountAddresses() {
-  const { user, reloadUser } = useOutletContext();
-  const addresses = user.data?.addresses || [];
-  const [editing, setEditing] = useState(null); // index or "new" or null
+  const { user, reloadUser } = /** @type {any} */ (useOutletContext());
+  // Base44 kept arbitrary data inside user.data; Supabase keeps it directly on the profile row
+  const addresses = Array.isArray(user?.addresses) ? user.addresses : [];
+  
+  const [editing, setEditing] = useState(/** @type {number | "new" | null} */ (null));
   const [form, setForm] = useState(empty);
   const [saving, setSaving] = useState(false);
 
   const openNew = () => { setForm(empty); setEditing("new"); };
-  const openEdit = (i) => { setForm({ ...empty, ...addresses[i] }); setEditing(i); };
+  const openEdit = (/** @type {number} */ i) => { setForm({ ...empty, ...addresses[i] }); setEditing(i); };
   const close = () => { setEditing(null); setForm(empty); };
 
-  const persist = async (next) => {
+  const persist = async (/** @type {any[]} */ next) => {
+    if (!user?.id) return;
     setSaving(true);
-    await base44.auth.updateMe({ addresses: next });
-    await reloadUser();
+    
+    try {
+      await supabase.from('profiles').update({ addresses: next }).eq('id', user.id);
+      await reloadUser();
+    } catch (err) {
+      console.error("Failed to save addresses:", err);
+    }
+    
     setSaving(false);
     close();
   };
 
-  const save = (e) => {
+  const save = (/** @type {React.FormEvent} */ e) => {
     e.preventDefault();
     const clean = { ...form, label: form.label.trim() || "Address" };
     if (editing === "new") persist([...addresses, clean]);
     else persist(addresses.map((a, i) => (i === editing ? clean : a)));
   };
 
-  const remove = (i) => {
-    if (!confirm("Delete this address?")) return;
+  const remove = (/** @type {number} */ i) => {
+    if (!window.confirm("Delete this address?")) return;
     persist(addresses.filter((_, idx) => idx !== i));
   };
 
-  const field = (label, key) => (
+  const field = (/** @type {string} */ label, /** @type {string} */ key) => (
     <label className="block">
       <span className="label-mono text-muted-foreground text-[9px]">{label}</span>
-      <input value={form[key]} onChange={(e) => setForm({ ...form, [key]: e.target.value })} className="mt-1.5 w-full border hairline px-3 py-2.5 text-sm focus:outline-none focus:border-foreground" />
+      <input 
+        value={/** @type {any} */ (form)[key]} 
+        onChange={(e) => setForm({ ...form, [key]: e.target.value })} 
+        className="mt-1.5 w-full border hairline px-3 py-2.5 text-sm focus:outline-none focus:border-foreground" 
+      />
     </label>
   );
 
@@ -58,7 +71,7 @@ export default function AccountAddresses() {
         </div>
       ) : (
         <div className="grid sm:grid-cols-2 gap-4">
-          {addresses.map((a, i) => (
+          {addresses.map((/** @type {any} */ a, /** @type {number} */ i) => (
             <div key={i} className="border hairline p-5">
               <div className="flex items-start justify-between mb-3">
                 <span className="label-mono text-[10px] border hairline px-2 py-1">{a.label || "Address"}</span>

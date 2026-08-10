@@ -2,11 +2,16 @@ import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Check, ChevronDown, Lock, ArrowRight } from "lucide-react";
 import { useCart } from "@/lib/cart-context";
-import { base44 } from "@/api/base44Client";
-import { Image } from "@/components/ui/image";
+import { supabase } from "@/lib/supabase";
+import { Image as BaseImage } from "@/components/ui/image";
+
+// Fix for ts(2322): Tell the strict checker that Image accepts any props
+/** @type {any} */
+const Image = BaseImage;
 
 export default function Checkout() {
-  const { items, totals, clearCart } = useCart();
+  // Fix for ts(2339): cast the context return to 'any'
+  const { items, totals, clearCart } = /** @type {any} */ (useCart());
   const navigate = useNavigate();
   const [openStep, setOpenStep] = useState("information");
   const [form, setForm] = useState({
@@ -15,9 +20,9 @@ export default function Checkout() {
     payment: "card", card: "", expiry: "", cvc: "",
   });
   const [placing, setPlacing] = useState(false);
-  const [done, setDone] = useState(null);
+  const [done, setDone] = useState(/** @type {string | null} */ (null));
 
-  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const set = (/** @type {string} */ k, /** @type {any} */ v) => setForm((f) => ({ ...f, [k]: v }));
 
   const steps = [
     { id: "information", label: "Customer Information" },
@@ -25,30 +30,68 @@ export default function Checkout() {
     { id: "payment", label: "Payment Method" },
   ];
 
-  const validInfo = form.name && form.email;
-  const validShip = form.line1 && form.city && form.postal_code;
-  const validPay = form.payment !== "card" || (form.card && form.expiry && form.cvc);
+  // Fix for ts(2322): Explicitly cast these string evaluations to strict booleans
+  const validInfo = !!(form.name && form.email);
+  const validShip = !!(form.line1 && form.city && form.postal_code);
+  const validPay = !!(form.payment !== "card" || (form.card && form.expiry && form.cvc));
 
   const placeOrder = async () => {
     setPlacing(true);
     try {
-      const order = await base44.entities.Order.create({
-        order_number: `MA-${Date.now().toString().slice(-8)}`,
-        customer_name: form.name,
-        email: form.email,
-        phone: form.phone,
-        shipping_address: { line1: form.line1, city: form.city, state: form.state, postal_code: form.postal_code, country: form.country },
-        items: items.map((i) => ({ product_id: i.product_id, name: i.name, price: i.price, quantity: i.quantity, size: i.size, color: i.color, image: i.image })),
-        subtotal: totals.subtotal,
-        shipping_fee: totals.shippingFee,
-        tax: totals.tax,
-        total: totals.total,
-        status: "pending",
-        payment_method: form.payment,
-      });
+      // 1. Check if user is logged in to associate the order
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      // 2. Insert main order
+      const { data: orderData, error: orderError } = await supabase
+        .from('orders')
+        .insert({
+          user_id: session?.user?.id || null,
+          status: 'pending',
+          subtotal: totals.subtotal,
+          shipping_fee: totals.shippingFee,
+          tax: totals.tax,
+          grand_total: totals.total,
+          payment_method: form.payment,
+          shipping_address: {
+            name: form.name,
+            email: form.email,
+            phone: form.phone,
+            line1: form.line1,
+            city: form.city,
+            state: form.state,
+            postal_code: form.postal_code,
+            country: form.country
+          }
+        })
+        .select()
+        .single();
+
+      if (orderError) throw orderError;
+
+      // 3. Map cart items to order_items schema
+      const orderItems = items.map((/** @type {any} */ i) => ({
+        order_id: orderData.id,
+        product_id: i.product_id,
+        product_name: i.name,
+        unit_price: i.price,
+        quantity: i.quantity,
+        selected_size: i.size,
+        selected_color: i.color,
+        total_price: i.price * i.quantity
+      }));
+
+      // 4. Insert items
+      const { error: itemsError } = await supabase
+        .from('order_items')
+        .insert(orderItems);
+
+      if (itemsError) throw itemsError;
+
       clearCart();
-      setDone(order.order_number);
+      // Use the last 8 chars of the UUID as a readable order number
+      setDone(`MA-${orderData.id.slice(-8).toUpperCase()}`);
     } catch (e) {
+      console.error("Checkout error:", e);
       alert("Order could not be placed. Please try again.");
     }
     setPlacing(false);
@@ -77,7 +120,7 @@ export default function Checkout() {
     );
   }
 
-  const StepHeader = ({ step, idx, valid }) => (
+  const StepHeader = (/** @type {{ step: any, idx: number, valid: boolean }} */ { step, idx, valid }) => (
     <button
       onClick={() => setOpenStep(step.id)}
       className="w-full flex items-center justify-between py-5"
@@ -165,7 +208,7 @@ export default function Checkout() {
           <div className="border hairline p-6">
             <p className="label-mono text-muted-foreground mb-5">— Order Summary</p>
             <div className="space-y-4 max-h-[40vh] overflow-y-auto no-scrollbar">
-              {items.map((i) => (
+              {items.map((/** @type {any} */ i) => (
                 <div key={i.key} className="flex gap-3">
                   <div className="w-14 h-16 bg-muted shrink-0 overflow-hidden relative">
                     {i.image && <Image src={i.image} alt={i.name} className="w-full h-full" fittingType="fill" />}

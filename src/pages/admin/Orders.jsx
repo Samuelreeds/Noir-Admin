@@ -1,29 +1,66 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { ChevronDown, Mail, MapPin } from "lucide-react";
-import { base44 } from "@/api/base44Client";
-import { Image } from "@/components/ui/image";
+import { supabase } from "@/lib/supabase";
+import { Image as BaseImage } from "@/components/ui/image";
+
+/** @type {any} */
+const Image = BaseImage;
 
 const STATUSES = ["pending", "paid", "processing", "shipping", "delivered", "cancelled", "refunded"];
 
 export default function AdminOrders() {
-  const [orders, setOrders] = useState([]);
+  const [orders, setOrders] = useState(/** @type {any[]} */ ([]));
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
-  const [expanded, setExpanded] = useState(null);
+  const [expanded, setExpanded] = useState(/** @type {string | null} */ (null));
 
   const load = async () => {
     setLoading(true);
-    try { setOrders(await base44.entities.Order.list("-created_date", 200)); }
-    catch (e) { console.error(e); }
+    try { 
+      // Join order_items and profiles to reconstruct the old Base44 JSON layout seamlessly
+      const { data, error } = await supabase
+        .from('orders')
+        .select('*, profiles(full_name, email), order_items(*, products(images))')
+        .order('created_at', { ascending: false })
+        .limit(200);
+        
+      if (error) throw error;
+      
+      const mappedOrders = (data || []).map((/** @type {any} */ o) => ({
+        ...o,
+        customer_name: o.profiles?.full_name || o.shipping_address?.name || "Guest",
+        email: o.shipping_address?.email || o.profiles?.email || "—",
+        phone: o.shipping_address?.phone || "—",
+        total: Number(o.grand_total) || 0,
+        subtotal: Number(o.subtotal) || 0,
+        shipping_fee: Number(o.shipping_fee) || 0,
+        tax: Number(o.tax) || 0,
+        discount: Number(o.discount_total) || 0,
+        items: o.order_items?.map((/** @type {any} */ i) => ({
+          name: i.product_name,
+          image: i.products?.images?.[0] || '',
+          size: i.selected_size,
+          color: i.selected_color,
+          quantity: i.quantity,
+          price: Number(i.unit_price)
+        })) || []
+      }));
+
+      setOrders(mappedOrders); 
+    }
+    catch (e) { 
+      console.error(e); 
+    }
     setLoading(false);
   };
+  
   useEffect(() => { load(); }, []);
 
-  const filtered = useMemo(() => orders.filter((o) => filter === "all" || o.status === filter), [orders, filter]);
+  const filtered = useMemo(() => orders.filter((/** @type {any} */ o) => filter === "all" || o.status === filter), [orders, filter]);
 
-  const updateStatus = async (id, status) => {
-    await base44.entities.Order.update(id, { status });
-    setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, status } : o)));
+  const updateStatus = async (/** @type {string} */ id, /** @type {string} */ status) => {
+    await supabase.from('orders').update({ status }).eq('id', id);
+    setOrders((prev) => prev.map((/** @type {any} */ o) => (o.id === id ? { ...o, status } : o)));
   };
 
   if (loading) {
@@ -40,13 +77,13 @@ export default function AdminOrders() {
       <div className="flex flex-wrap gap-2 border-b hairline pb-3">
         {["all", ...STATUSES].map((s) => (
           <button key={s} onClick={() => setFilter(s)} className={`px-3 py-1.5 label-mono text-[9px] capitalize ${filter === s ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground border hairline"}`}>
-            {s} {s !== "all" && <span className="opacity-60 ml-1">{orders.filter((o) => o.status === s).length}</span>}
+            {s} {s !== "all" && <span className="opacity-60 ml-1">{orders.filter((/** @type {any} */ o) => o.status === s).length}</span>}
           </button>
         ))}
       </div>
 
       <div className="border hairline divide-y hairline">
-        {filtered.map((o) => {
+        {filtered.map((/** @type {any} */ o) => {
           const open = expanded === o.id;
           return (
             <div key={o.id}>
@@ -66,7 +103,7 @@ export default function AdminOrders() {
                   <div>
                     <p className="label-mono text-muted-foreground text-[9px] mb-3">Items</p>
                     <div className="space-y-3">
-                      {(o.items || []).map((it, i) => (
+                      {(o.items || []).map((/** @type {any} */ it, /** @type {number} */ i) => (
                         <div key={i} className="flex items-center gap-3">
                           <div className="w-10 h-12 bg-background overflow-hidden shrink-0">
                             {it.image && <Image src={it.image} alt="" className="w-full h-full" />}

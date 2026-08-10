@@ -1,10 +1,13 @@
 import React, { useEffect, useState, useRef } from "react";
 import { Link } from "react-router-dom";
 import { ArrowRight, ArrowUpRight } from "lucide-react";
-import { base44 } from "@/api/base44Client";
-import { Image } from "@/components/ui/image";
+import { supabase } from "@/lib/supabase";
+import { Image as BaseImage } from "@/components/ui/image";
 import Reveal from "@/components/store/Reveal";
 import ProductCard from "@/components/store/ProductCard";
+
+/** @type {any} */
+const Image = BaseImage;
 
 const HERO_IMG = "https://media.base44.com/images/public/6a6358cd1f0a294653264a9c/9b06cbdbd_generated_a286cb60.png";
 const PROMO_IMG = "https://media.base44.com/images/public/6a6358cd1f0a294653264a9c/660472d4b_generated_9f0d643b.png";
@@ -17,25 +20,38 @@ const CATEGORY_TILES = [
 ];
 
 export default function Home() {
-  const [products, setProducts] = useState([]);
+  const [products, setProducts] = useState(/** @type {any[]} */ ([]));
   const [loading, setLoading] = useState(true);
-  const rackRef = useRef(null);
+  const rackRef = useRef(/** @type {any} */ (null));
 
   useEffect(() => {
     (async () => {
       try {
-        const list = await base44.entities.Product.list("-created_date", 60);
-        setProducts(list.filter((p) => p.status !== "archived"));
-      } catch (e) { console.error(e); }
+        const { data, error } = await supabase
+          .from("products")
+          .select("*")
+          .neq("status", "archived")
+          .order("created_at", { ascending: false })
+          .limit(60);
+
+        if (error) {
+          console.error("Error fetching products from Supabase:", error);
+        } else if (data) {
+          setProducts(data);
+        }
+      } catch (e) {
+        console.error(e);
+      }
       setLoading(false);
     })();
   }, []);
 
-  const featured = products.filter((p) => p.featured).slice(0, 8);
-  const newArrivals = products.filter((p) => p.is_new).slice(0, 6);
-  const bestSellers = products.filter((p) => p.is_best_seller).slice(0, 6);
+  const featured = products.filter((/** @type {any} */ p) => p.featured).slice(0, 8);
+  const newArrivals = products.filter((/** @type {any} */ p) => p.is_new).slice(0, 6);
+  const bestSellers = products.filter((/** @type {any} */ p) => p.is_best_seller).slice(0, 6);
 
-  const scrollRack = (dir) => {
+  // Inline JSDoc required for strict mode
+  const scrollRack = (/** @type {number} */ dir) => {
     const el = rackRef.current;
     if (!el) return;
     el.scrollBy({ left: dir * (el.clientWidth * 0.8), behavior: "smooth" });
@@ -107,7 +123,7 @@ export default function Home() {
             </Reveal>
           </div>
           <div ref={rackRef} className="flex gap-5 overflow-x-auto no-scrollbar px-4 md:px-8 pb-4 snap-x">
-            {featured.map((p, i) => (
+            {featured.map((/** @type {any} */ p, /** @type {number} */ i) => (
               <div key={p.id} className="w-[78vw] sm:w-[46vw] md:w-[30vw] lg:w-[22vw] shrink-0 snap-start">
                 <ProductCard product={p} index={i} />
               </div>
@@ -124,7 +140,7 @@ export default function Home() {
             <h2 className="font-display text-4xl md:text-6xl tracking-[-0.04em]">Browse by Form.</h2>
           </Reveal>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-5">
-            {CATEGORY_TILES.map((c, i) => (
+            {CATEGORY_TILES.map((/** @type {any} */ c, /** @type {number} */ i) => (
               <Reveal key={c.label} delay={i * 80}>
                 <Link to={c.path} className="group relative block aspect-[4/5] overflow-hidden bg-muted">
                   <Image src={c.img} alt={c.label} className="w-full h-full group-hover:scale-105 transition-transform duration-[1.2s] cubic-bezier(0.16,1,0.3,1)" fittingType="fill" />
@@ -152,7 +168,7 @@ export default function Home() {
               <Link to="/shop?filter=new" className="label-mono border-b border-foreground pb-1 hover:opacity-60 transition-opacity hidden md:inline-block">View All</Link>
             </Reveal>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 gap-x-5 gap-y-10">
-              {newArrivals.map((p, i) => (
+              {newArrivals.map((/** @type {any} */ p, /** @type {number} */ i) => (
                 <Reveal key={p.id} delay={(i % 3) * 80}>
                   <ProductCard product={p} index={i} />
                 </Reveal>
@@ -191,7 +207,7 @@ export default function Home() {
               <Link to="/shop?filter=best" className="label-mono border-b border-foreground pb-1 hover:opacity-60 transition-opacity hidden md:inline-block">View All</Link>
             </Reveal>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-x-5 gap-y-10">
-              {bestSellers.map((p, i) => (
+              {bestSellers.map((/** @type {any} */ p, /** @type {number} */ i) => (
                 <Reveal key={p.id} delay={(i % 3) * 80}>
                   <ProductCard product={p} index={i} />
                 </Reveal>

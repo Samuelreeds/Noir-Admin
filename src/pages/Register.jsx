@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
-import { base44 } from "@/api/base44Client";
+import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,7 +19,7 @@ export default function Register() {
   const [showOtp, setShowOtp] = useState(false);
   const [otpCode, setOtpCode] = useState("");
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (/** @type {React.FormEvent} */ e) => {
     e.preventDefault();
     setError("");
     if (password !== confirmPassword) {
@@ -28,9 +28,16 @@ export default function Register() {
     }
     setLoading(true);
     try {
-      await base44.auth.register({ email, password });
+      const { error: signUpError } = await supabase.auth.signUp({ 
+        email, 
+        password,
+        options: {
+            data: { role: 'customer' }
+        }
+      });
+      if (signUpError) throw signUpError;
       setShowOtp(true);
-    } catch (err) {
+    } catch (/** @type {any} */ err) {
       setError(err.message || "Registration failed");
     } finally {
       setLoading(false);
@@ -41,12 +48,14 @@ export default function Register() {
     setError("");
     setLoading(true);
     try {
-      const result = await base44.auth.verifyOtp({ email, otpCode });
-      if (result?.access_token) {
-        base44.auth.setToken(result.access_token);
-      }
+      const { error: verifyError } = await supabase.auth.verifyOtp({ 
+        email, 
+        token: otpCode,
+        type: 'signup'
+      });
+      if (verifyError) throw verifyError;
       window.location.href = "/";
-    } catch (err) {
+    } catch (/** @type {any} */ err) {
       setError(err.message || "Invalid verification code");
     } finally {
       setLoading(false);
@@ -56,18 +65,32 @@ export default function Register() {
   const handleResend = async () => {
     setError("");
     try {
-      await base44.auth.resendOtp(email);
+      const { error: resendError } = await supabase.auth.resend({
+        type: 'signup',
+        email,
+      });
+      if (resendError) throw resendError;
+      
       toast({
         title: "Code sent",
         description: "Check your email for the new code.",
       });
-    } catch (err) {
+    } catch (/** @type {any} */ err) {
       setError(err.message || "Failed to resend code");
     }
   };
 
-  const handleGoogle = () => {
-    base44.auth.loginWithProvider("google", "/");
+  const handleGoogle = async () => {
+    try {
+      await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/`,
+        },
+      });
+    } catch (/** @type {any} */ err) {
+      setError(err.message || "Failed to initialize Google login");
+    }
   };
 
   if (showOtp) {

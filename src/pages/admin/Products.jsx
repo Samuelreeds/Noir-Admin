@@ -1,39 +1,46 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Plus, Search, Pencil, Trash2 } from "lucide-react";
-import { base44 } from "@/api/base44Client";
-import { Image } from "@/components/ui/image";
+import { supabase } from "@/lib/supabase";
+import { Image as BaseImage } from "@/components/ui/image";
 import ProductForm from "@/components/admin/ProductForm";
 
+/** @type {any} */
+const Image = BaseImage;
+
 export default function AdminProducts() {
-  const [products, setProducts] = useState([]);
-  const [categories, setCategories] = useState([]);
-  const [brands, setBrands] = useState([]);
+  const [products, setProducts] = useState(/** @type {any[]} */ ([]));
+  const [categories, setCategories] = useState(/** @type {any[]} */ ([]));
+  const [brands, setBrands] = useState(/** @type {any[]} */ ([]));
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [formOpen, setFormOpen] = useState(false);
-  const [editing, setEditing] = useState(null);
+  const [editing, setEditing] = useState(/** @type {any} */ (null));
 
   const load = async () => {
     setLoading(true);
     try {
       const [ps, cs, bs] = await Promise.all([
-        base44.entities.Product.list("-created_date", 200),
-        base44.entities.Category.list("-created_date", 100),
-        base44.entities.Brand.list("-created_date", 100),
+        supabase.from('products').select('*').order('created_at', { ascending: false }).limit(200),
+        supabase.from('categories').select('*').order('created_at', { ascending: false }).limit(100),
+        supabase.from('brands').select('*').order('created_at', { ascending: false }).limit(100),
       ]);
-      setProducts(ps); setCategories(cs); setBrands(bs);
-    } catch (e) { console.error(e); }
+      setProducts(ps.data || []); 
+      setCategories(cs.data || []); 
+      setBrands(bs.data || []);
+    } catch (e) { 
+      console.error(e); 
+    }
     setLoading(false);
   };
 
   useEffect(() => { load(); }, []);
 
-  const catName = (id) => categories.find((c) => c.id === id)?.name || "—";
-  const brandName = (id) => brands.find((b) => b.id === id)?.name || "—";
+  const catName = (/** @type {string} */ id) => categories.find((/** @type {any} */ c) => c.id === id)?.name || "—";
+  const brandName = (/** @type {string} */ id) => brands.find((/** @type {any} */ b) => b.id === id)?.name || "—";
 
   const filtered = useMemo(() => {
-    return products.filter((p) => {
+    return products.filter((/** @type {any} */ p) => {
       if (statusFilter !== "all" && p.status !== statusFilter) return false;
       if (query) {
         const q = query.toLowerCase();
@@ -44,10 +51,10 @@ export default function AdminProducts() {
   }, [products, query, statusFilter]);
 
   const openNew = () => { setEditing(null); setFormOpen(true); };
-  const openEdit = (p) => { setEditing(p); setFormOpen(true); };
-  const remove = async (p) => {
-    if (!confirm(`Delete "${p.name}"?`)) return;
-    await base44.entities.Product.delete(p.id);
+  const openEdit = (/** @type {any} */ p) => { setEditing(p); setFormOpen(true); };
+  const remove = async (/** @type {any} */ p) => {
+    if (!window.confirm(`Delete "${p.name}"?`)) return;
+    await supabase.from('products').delete().eq('id', p.id);
     load();
   };
 
@@ -88,7 +95,7 @@ export default function AdminProducts() {
               </tr>
             </thead>
             <tbody className="divide-y hairline">
-              {filtered.map((p) => {
+              {filtered.map((/** @type {any} */ p) => {
                 const hasDiscount = p.discount_price != null && p.discount_price < p.price;
                 return (
                   <tr key={p.id} className="hover:bg-muted/50">

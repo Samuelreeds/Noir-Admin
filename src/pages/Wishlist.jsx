@@ -1,23 +1,35 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Heart } from "lucide-react";
-import { base44 } from "@/api/base44Client";
+import { supabase } from "@/lib/supabase";
 import { useCart } from "@/lib/cart-context";
 import ProductCard from "@/components/store/ProductCard";
 import Reveal from "@/components/store/Reveal";
 
 export default function Wishlist() {
-  const { wishlist } = useCart();
-  const [products, setProducts] = useState([]);
+  const { wishlist } = /** @type {any} */ (useCart());
+  const [products, setProducts] = useState(/** @type {any[]} */ ([]));
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     (async () => {
-      if (wishlist.length === 0) { setProducts([]); setLoading(false); return; }
+      if (!wishlist || wishlist.length === 0) { 
+        setProducts([]); 
+        setLoading(false); 
+        return; 
+      }
+      
       try {
-        const all = await base44.entities.Product.list("-created_date", 200);
-        setProducts(all.filter((p) => wishlist.includes(p.id)));
-      } catch (e) { console.error(e); }
+        const { data, error } = await supabase
+          .from('products')
+          .select('*')
+          .in('id', wishlist);
+          
+        if (error) throw error;
+        setProducts(data || []);
+      } catch (e) { 
+        console.error("Error fetching wishlist:", e); 
+      }
       setLoading(false);
     })();
   }, [wishlist]);
@@ -44,7 +56,7 @@ export default function Wishlist() {
           </div>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-5 gap-y-10">
-            {products.map((p, i) => (
+            {products.map((/** @type {any} */ p, /** @type {number} */ i) => (
               <Reveal key={p.id} delay={(i % 4) * 60}>
                 <ProductCard product={p} index={i} />
               </Reveal>

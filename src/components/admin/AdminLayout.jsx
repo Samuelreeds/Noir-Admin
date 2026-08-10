@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Link, Outlet, useNavigate, useLocation } from "react-router-dom";
-import { base44 } from "@/api/base44Client";
+import { supabase } from "@/lib/supabase";
 import { LayoutDashboard, Package, ShoppingBag, Tags, Barcode, LogOut, ExternalLink } from "lucide-react";
 
 const NAV = [
@@ -14,24 +14,44 @@ const NAV = [
 export default function AdminLayout() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(/** @type {any} */ (null));
   const [checking, setChecking] = useState(true);
 
   useEffect(() => {
     (async () => {
       try {
-        const ok = await base44.auth.isAuthenticated();
-        if (!ok) { base44.auth.redirectToLogin(window.location.pathname); return; }
-        const me = await base44.auth.me();
-        if (me.role !== "admin") { navigate("/", { replace: true }); return; }
-        setUser(me);
-      } catch {
-        base44.auth.redirectToLogin(window.location.pathname);
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (!session) { 
+          navigate("/login", { replace: true }); 
+          return; 
+        }
+        
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .single();
+
+        if (profile?.role !== "admin") { 
+          navigate("/", { replace: true }); 
+          return; 
+        }
+        
+        setUser({ ...session.user, ...profile });
+      } catch (error) {
+        console.error("Admin layout auth error:", error);
+        navigate("/login", { replace: true });
       } finally {
         setChecking(false);
       }
     })();
-  }, []);
+  }, [navigate]);
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    navigate("/login");
+  };
 
   if (checking || !user) {
     return (
@@ -41,7 +61,7 @@ export default function AdminLayout() {
     );
   }
 
-  const isActive = (item) => item.end ? location.pathname === item.to : location.pathname.startsWith(item.to) && item.to !== "/admin";
+  const isActive = (/** @type {any} */ item) => item.end ? location.pathname === item.to : location.pathname.startsWith(item.to) && item.to !== "/admin";
 
   return (
     <div className="min-h-screen bg-background flex">
@@ -64,7 +84,7 @@ export default function AdminLayout() {
           <Link to="/" className="flex items-center gap-3 px-3 py-2.5 label-mono text-[10px] text-muted-foreground hover:text-foreground">
             <ExternalLink size={15} strokeWidth={1.5} /> View Store
           </Link>
-          <button onClick={() => base44.auth.logout("/login")} className="w-full flex items-center gap-3 px-3 py-2.5 label-mono text-[10px] text-muted-foreground hover:text-foreground text-left">
+          <button onClick={handleLogout} className="w-full flex items-center gap-3 px-3 py-2.5 label-mono text-[10px] text-muted-foreground hover:text-foreground text-left">
             <LogOut size={15} strokeWidth={1.5} /> Sign Out
           </button>
         </div>
