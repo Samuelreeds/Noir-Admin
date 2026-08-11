@@ -74,7 +74,7 @@ export default function Advertisement() {
   const totalPages = Math.ceil(filteredAds.length / ITEMS_PER_PAGE) || 1;
   const paginatedAds = filteredAds.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
-  const handleSubmitNew = (e) => {
+  const handleSubmitNew = (/** @type {any} */ e) => {
     e.preventDefault();
     if (!form.title || !form.image_url) return alert("Please fill in the title and image URL.");
     addAdMutation.mutate({

@@ -74,7 +74,7 @@ export default function Categories() {
   const totalPages = Math.ceil(filteredCategories.length / ITEMS_PER_PAGE) || 1;
   const paginatedCategories = filteredCategories.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
-  const handleSubmitNew = (e) => {
+  const handleSubmitNew = (/** @type {any} */ e) => {
     e.preventDefault();
     if (!newTitle) return alert("Please enter a category title.");
     addCategoryMutation.mutate({

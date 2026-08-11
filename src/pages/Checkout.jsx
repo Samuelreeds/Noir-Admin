@@ -11,7 +11,7 @@ import { Image as BaseImage } from "@/components/ui/image";
 const Image = BaseImage;
 
 export default function Checkout() {
-  const { items, totals, clearCart } = /** @type {any} */ (useCart());
+  const { items, totals, clearCart, cartExpiresAt } = /** @type {any} */ (useCart());
   const { user } = /** @type {any} */ (useAuth());
   const navigate = useNavigate();
   
@@ -23,6 +23,12 @@ export default function Checkout() {
   });
   const [placing, setPlacing] = useState(false);
   const [done, setDone] = useState(/** @type {string | null} */ (null));
+  
+  // Existing State for the Authentication Modal
+  const [showAuthModal, setShowAuthModal] = useState(false);
+
+  // New State for the Cart Expiration Modal
+  const [showCartExpiredModal, setShowCartExpiredModal] = useState(false);
 
   // Auto-fill user data if they are logged in
   useEffect(() => {
@@ -54,7 +60,26 @@ export default function Checkout() {
   const validShip = !!(form.address && form.province);
   const validPay = !!form.payment; 
 
+  // Handler for acknowledging the expiration modal
+  const handleCartExpiredAcknowledge = () => {
+    setShowCartExpiredModal(false); // Close the modal
+    clearCart(); // *Then* clear the cart
+    navigate("/shop"); // *Then* return to shop
+  };
+
   const placeOrder = async () => {
+    // 1. Enforce 10-Minute Cart Expiration Check - Updated to use Modal
+    if (cartExpiresAt && Date.now() > parseInt(cartExpiresAt, 10)) {
+      setShowCartExpiredModal(true); // Open modal instead of alert()
+      return; // Stop the order process
+    }
+
+    // 2. Enforce User Authentication Check (Preserved)
+    if (!user) {
+      setShowAuthModal(true);
+      return;
+    }
+
     setPlacing(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -160,7 +185,7 @@ export default function Checkout() {
   const inputCls = "w-full border hairline px-4 py-3 outline-none focus:border-foreground font-mono text-sm bg-background";
 
   return (
-    <div className="bg-background">
+    <div className="bg-background relative">
       <div className="border-b hairline">
         <div className="max-w-[1400px] mx-auto px-4 md:px-8 py-8">
           <Link to="/" className="font-display text-sm tracking-[-0.04em]">MONOLITHIC ATELIER</Link>
@@ -258,6 +283,52 @@ export default function Checkout() {
           </div>
         </div>
       </div>
+
+      {/* Existing Auth Modal Overlay (Preserved) */}
+      {showAuthModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
+          <div className="bg-background border hairline max-w-md w-full p-6 shadow-2xl inertia-fade">
+            <h3 className="font-display text-2xl tracking-[-0.04em] mb-2">Sign In Required</h3>
+            <p className="text-muted-foreground mb-6 font-mono text-sm">
+              Please sign in to your account or create a new one to securely complete your order.
+            </p>
+            <div className="flex gap-4">
+              <button 
+                onClick={() => setShowAuthModal(false)}
+                className="flex-1 py-3 border hairline label-mono hover:bg-muted/50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={() => navigate('/login')}
+                className="flex-1 py-3 bg-foreground text-background label-mono transition-opacity hover:opacity-90"
+              >
+                Sign In
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* NEW Cart Expired Modal Overlay - Content updated to match image message */}
+      {showCartExpiredModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
+          <div className="bg-background border hairline max-w-md w-full p-6 shadow-2xl inertia-fade relative z-[60]">
+            <h3 className="font-display text-2xl tracking-[-0.04em] mb-2">Cart Reservation Expired</h3>
+            <p className="text-muted-foreground mb-6 font-mono text-sm">
+              Your cart reservation has expired after 10 minutes. Please add the items again.
+            </p>
+            <div className="flex gap-4">
+              <button 
+                onClick={handleCartExpiredAcknowledge} // User acknowledging is what triggers clearing and navigating
+                className="w-full py-3 bg-foreground text-background label-mono transition-opacity hover:opacity-90"
+              >
+                Return to Shop
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
-} 
+}

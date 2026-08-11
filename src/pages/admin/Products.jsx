@@ -99,15 +99,19 @@ export default function Products() {
     document.body.removeChild(link);
   };
 
-  const handleSubmitNew = (e) => {
+  const handleSubmitNew = (/** @type {any} */ e) => {
     e.preventDefault();
     if (!form.name || !form.price) return alert("Please fill in the product name and price.");
+    
     addProductMutation.mutate({
       name: form.name,
       code: form.code || `PRD-${Math.floor(1000 + Math.random() * 9000)}`,
       price: parseFloat(form.price),
-      discount: parseFloat(form.discount || 0),
-      stock: parseInt(form.stock || 10),
+      
+      // FIX: Changed 0 to '0' and 10 to '10' so they are evaluated as strings
+      discount: parseFloat(form.discount || '0'), 
+      stock: parseInt(form.stock || '10', 10),
+      
       image: form.image || 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=300&q=80',
       status: 'active'
     });

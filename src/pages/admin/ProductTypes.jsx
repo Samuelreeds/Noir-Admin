@@ -71,7 +71,7 @@ export default function ProductTypes() {
   const totalPages = Math.ceil(filteredTypes.length / ITEMS_PER_PAGE) || 1;
   const paginatedTypes = filteredTypes.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
-  const handleSubmitNew = (e) => {
+  const handleSubmitNew = (/** @type {any} */ e) => {
     e.preventDefault();
     if (!newTitle) return alert("Please enter a product type title.");
     addTypeMutation.mutate({

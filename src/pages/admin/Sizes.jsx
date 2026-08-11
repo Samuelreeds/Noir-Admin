@@ -72,7 +72,7 @@ export default function Sizes() {
   const totalPages = Math.ceil(filteredSizes.length / ITEMS_PER_PAGE) || 1;
   const paginatedSizes = filteredSizes.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
-  const handleSubmitNew = (e) => {
+  const handleSubmitNew = (/** @type {any} */ e) => {
     e.preventDefault();
     if (!form.name) return alert("Please enter a size name.");
     addSizeMutation.mutate({

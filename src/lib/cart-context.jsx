@@ -1,8 +1,8 @@
 import React, { createContext, useContext, useEffect, useMemo, useState, useCallback } from "react";
 
-const CartContext = createContext(null);
+const CartContext = createContext(/** @type {any} */ (null));
 
-const load = (key, fallback) => {
+const load = (/** @type {string} */ key, /** @type {any} */ fallback) => {
   try {
     const raw = localStorage.getItem(key);
     return raw ? JSON.parse(raw) : fallback;
@@ -11,19 +11,46 @@ const load = (key, fallback) => {
   }
 };
 
+/**
+ * @param {{ children: React.ReactNode }} props 
+ */
 export function CartProvider({ children }) {
-  const [items, setItems] = useState(() => load("atelier_cart", []));
-  const [wishlist, setWishlist] = useState(() => load("atelier_wishlist", []));
+  // FIX: Moved the JSDoc cast inside the arrow function so it casts the return value, not the function itself
+  const [items, setItems] = useState(() => /** @type {any[]} */ (load("atelier_cart", [])));
+  const [wishlist, setWishlist] = useState(() => /** @type {string[]} */ (load("atelier_wishlist", [])));
   const [drawerOpen, setDrawerOpen] = useState(false);
+
+  // Global timer for the cart reservation (10 minutes)
+  const [cartExpiresAt, setCartExpiresAt] = useState(() => localStorage.getItem("atelier_cart_expires_at") || null);
 
   useEffect(() => { localStorage.setItem("atelier_cart", JSON.stringify(items)); }, [items]);
   useEffect(() => { localStorage.setItem("atelier_wishlist", JSON.stringify(wishlist)); }, [wishlist]);
 
+  // Expiration Checker
+  useEffect(() => {
+    if (!cartExpiresAt || items.length === 0) return;
+
+    const interval = setInterval(() => {
+      if (Date.now() > parseInt(cartExpiresAt, 1)) {
+        // Cart Expired! Wipe everything.
+        setItems([]);
+        setCartExpiresAt(null);
+        localStorage.removeItem("atelier_cart");
+        localStorage.removeItem("atelier_cart_expires_at");
+        
+        // Let the user know
+        alert("Your cart reservation has expired. The items have been released.");
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [cartExpiresAt, items.length]);
+
   const openDrawer = useCallback(() => setDrawerOpen(true), []);
   const closeDrawer = useCallback(() => setDrawerOpen(false), []);
 
-  const addItem = useCallback((product, { size, color, quantity = 1 }) => {
-    setItems((prev) => {
+  const addItem = useCallback((/** @type {any} */ product, /** @type {any} */ { size, color, quantity = 1 }) => {
+    setItems((/** @type {any[]} */ prev) => {
       const key = `${product.id}|${size}|${color}`;
       const existing = prev.find((i) => i.key === key);
       if (existing) {
@@ -41,27 +68,46 @@ export function CartProvider({ children }) {
         quantity,
       }];
     });
+
+    // Set or refresh the 10-minute timer (600,000 milliseconds)
+    const expiryTime = Date.now() + 10 * 60 * 1000;
+    setCartExpiresAt(expiryTime.toString());
+    localStorage.setItem('atelier_cart_expires_at', expiryTime.toString());
+
     setDrawerOpen(true);
   }, []);
 
-  const removeItem = useCallback((key) => {
-    setItems((prev) => prev.filter((i) => i.key !== key));
+  const removeItem = useCallback((/** @type {string} */ key) => {
+    setItems((/** @type {any[]} */ prev) => {
+      const newItems = prev.filter((i) => i.key !== key);
+      // If the cart is now empty, kill the timer
+      if (newItems.length === 0) {
+        setCartExpiresAt(null);
+        localStorage.removeItem("atelier_cart_expires_at");
+      }
+      return newItems;
+    });
   }, []);
 
-  const updateQty = useCallback((key, quantity) => {
-    setItems((prev) => prev.map((i) => i.key === key ? { ...i, quantity: Math.max(1, quantity) } : i));
+  const updateQty = useCallback((/** @type {string} */ key, /** @type {number} */ quantity) => {
+    setItems((/** @type {any[]} */ prev) => prev.map((i) => i.key === key ? { ...i, quantity: Math.max(1, quantity) } : i));
   }, []);
 
-  const clearCart = useCallback(() => setItems([]), []);
+  const clearCart = useCallback(() => {
+    setItems([]);
+    // Clear timer
+    setCartExpiresAt(null);
+    localStorage.removeItem("atelier_cart_expires_at");
+  }, []);
 
-  const toggleWishlist = useCallback((productId) => {
-    setWishlist((prev) => prev.includes(productId) ? prev.filter((id) => id !== productId) : [...prev, productId]);
+  const toggleWishlist = useCallback((/** @type {string} */ productId) => {
+    setWishlist((/** @type {string[]} */ prev) => prev.includes(productId) ? prev.filter((id) => id !== productId) : [...prev, productId]);
   }, []);
 
   const totals = useMemo(() => {
-    const subtotal = items.reduce((s, i) => s + i.price * i.quantity, 0);
-    const originalSubtotal = items.reduce((s, i) => s + (i.original_price ?? i.price) * i.quantity, 0);
-    const itemCount = items.reduce((s, i) => s + i.quantity, 0);
+    const subtotal = items.reduce((/** @type {number} */ s, /** @type {any} */ i) => s + i.price * i.quantity, 0);
+    const originalSubtotal = items.reduce((/** @type {number} */ s, /** @type {any} */ i) => s + (i.original_price ?? i.price) * i.quantity, 0);
+    const itemCount = items.reduce((/** @type {number} */ s, /** @type {any} */ i) => s + i.quantity, 0);
     const shippingFee = subtotal > 250 || subtotal === 0 ? 0 : 18;
     const tax = +(subtotal * 0.08).toFixed(2);
     const total = +(subtotal + shippingFee + tax).toFixed(2);
@@ -70,9 +116,9 @@ export function CartProvider({ children }) {
 
   const value = useMemo(() => ({
     items, wishlist, drawerOpen, openDrawer, closeDrawer,
-    addItem, removeItem, updateQty, clearCart, toggleWishlist, totals,
-    isInWishlist: (id) => wishlist.includes(id),
-  }), [items, wishlist, drawerOpen, openDrawer, closeDrawer, addItem, removeItem, updateQty, clearCart, toggleWishlist, totals]);
+    addItem, removeItem, updateQty, clearCart, toggleWishlist, totals, cartExpiresAt,
+    isInWishlist: (/** @type {string} */ id) => wishlist.includes(id),
+  }), [items, wishlist, drawerOpen, openDrawer, closeDrawer, addItem, removeItem, updateQty, clearCart, toggleWishlist, totals, cartExpiresAt]);
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 }
