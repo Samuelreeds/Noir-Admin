@@ -1,7 +1,8 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Search, ShoppingBag, Heart, User, Menu, X } from "lucide-react";
+import { Search, ShoppingBag, Heart, User, Menu, X, Shield } from "lucide-react";
 import { useCart } from "@/lib/cart-context";
+import { useAuth } from "@/lib/AuthContext";
 
 const NAV = [
   { label: "Home", path: "/" },
@@ -13,8 +14,12 @@ const NAV = [
 
 export default function Navbar({ onOpenSearch }) {
   const { totals, openDrawer, wishlist } = useCart();
+  const { user } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
   const navigate = useNavigate();
+
+  // Check if the current user is an admin
+  const isAdmin = user?.role === 'admin';
 
   return (
     <>
@@ -68,6 +73,14 @@ export default function Navbar({ onOpenSearch }) {
             <button onClick={onOpenSearch} aria-label="Search" className="hover:opacity-60 transition-opacity">
               <Search size={18} strokeWidth={1.5} />
             </button>
+            
+            {/* Admin Link (Only visible to admins) */}
+            {isAdmin && (
+              <Link to="/admin" aria-label="Admin Dashboard" className="hover:opacity-60 transition-opacity hidden sm:block text-emerald-600">
+                <Shield size={18} strokeWidth={1.5} />
+              </Link>
+            )}
+
             <Link to="/account" aria-label="Account" className="hover:opacity-60 transition-opacity hidden sm:block">
               <User size={18} strokeWidth={1.5} />
             </Link>
@@ -112,9 +125,17 @@ export default function Navbar({ onOpenSearch }) {
                 </button>
               ))}
             </nav>
-            <div className="mt-auto flex items-center gap-5 pt-8 border-t hairline">
-              <Link to="/wishlist" onClick={() => setMobileOpen(false)} className="flex items-center gap-2 label-mono"><Heart size={16} /> Wishlist</Link>
-              <Link to="/account" onClick={() => setMobileOpen(false)} className="flex items-center gap-2 label-mono"><User size={16} /> Account</Link>
+            <div className="mt-auto flex flex-col gap-4 pt-8 border-t hairline">
+              <div className="flex items-center gap-5">
+                <Link to="/wishlist" onClick={() => setMobileOpen(false)} className="flex items-center gap-2 label-mono"><Heart size={16} /> Wishlist</Link>
+                <Link to="/account" onClick={() => setMobileOpen(false)} className="flex items-center gap-2 label-mono"><User size={16} /> Account</Link>
+              </div>
+              {/* Mobile Admin Link */}
+              {isAdmin && (
+                <Link to="/admin" onClick={() => setMobileOpen(false)} className="flex items-center gap-2 label-mono text-emerald-600">
+                  <Shield size={16} /> Dashboard
+                </Link>
+              )}
             </div>
           </div>
         </div>

@@ -37,8 +37,7 @@ export default function ProductForm(/** @type {any} */ { open, onClose, onSaved,
 
   if (!open) return null;
 
-  const set = (/** @type {string} */ k, /** @type {any} */ v) => setForm((f) => ({ ...f, [k]: v }));
-
+  const set = (/** @type {string} */ k, /** @type {any} */ v) => setForm((f) => /** @type {any} */ ({ ...f, [k]: v }));
   const submit = async (/** @type {React.FormEvent} */ e) => {
     e.preventDefault();
     setSaving(true); setErr(null);
@@ -84,12 +83,13 @@ export default function ProductForm(/** @type {any} */ { open, onClose, onSaved,
     }
   };
 
+ // Cast form to record dictionary to permit string key indexing
   const field = (/** @type {string} */ label, /** @type {string} */ key, opts = /** @type {any} */ ({})) => (
     <label className="block">
       <span className="label-mono text-muted-foreground text-[9px]">{label}</span>
       <input
         type={opts.type || "text"}
-        value={form[key]}
+        value={/** @type {any} */ (form)[key]}
         onChange={(e) => set(key, e.target.value)}
         step={opts.step}
         className="mt-1.5 w-full border hairline px-3 py-2.5 text-sm bg-background focus:outline-none focus:border-foreground"
@@ -163,7 +163,7 @@ export default function ProductForm(/** @type {any} */ { open, onClose, onSaved,
               ["featured", "Featured"], ["is_new", "New"], ["is_best_seller", "Best Seller"],
             ].map(([k, label]) => (
               <label key={k} className="flex items-center gap-2 label-mono text-[10px] cursor-pointer">
-                <input type="checkbox" checked={form[k]} onChange={(e) => set(k, e.target.checked)} className="accent-foreground w-4 h-4" />
+                <input type="checkbox" checked={/** @type {any} */ (form)[k]} onChange={(e) => set(k, e.target.checked)} className="accent-foreground w-4 h-4" />
                 {label}
               </label>
             ))}

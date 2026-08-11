@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect } from "react";
 import { Link, Outlet, useNavigate, useLocation } from "react-router-dom";
-import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/lib/AuthContext";
 import { User, ShoppingBag, MapPin, LogOut } from "lucide-react";
 
 const NAV = [
@@ -12,46 +12,16 @@ const NAV = [
 export default function AccountLayout() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [user, setUser] = useState(/** @type {any} */ (null));
-  const [checking, setChecking] = useState(true);
-
-  const loadMe = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    
-    if (session?.user) {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', session.user.id)
-        .single();
-        
-      setUser({ ...session.user, ...profile });
-    }
-    setChecking(false);
-  };
+  // 1. Hook directly into our global Auth Context
+  const { user, isLoadingAuth, logout, checkUserAuth } = useAuth();
 
   useEffect(() => {
-    (async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) { 
-          navigate("/login"); 
-          return; 
-        }
-        await loadMe();
-      } catch (error) {
-        console.error("Account layout auth error:", error);
-        navigate("/login");
-      }
-    })();
-  }, [navigate]);
+    if (!isLoadingAuth && !user) {
+      navigate("/login", { replace: true });
+    }
+  }, [user, isLoadingAuth, navigate]);
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    navigate("/");
-  };
-
-  if (checking || !user) {
+  if (isLoadingAuth || !user) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center">
         <div className="w-6 h-6 border border-foreground border-t-transparent rounded-full animate-spin" />
@@ -81,13 +51,15 @@ export default function AccountLayout() {
               </Link>
             );
           })}
-          <button onClick={handleLogout} className="flex items-center gap-3 px-3 py-2.5 label-mono text-[10px] text-muted-foreground hover:text-foreground text-left whitespace-nowrap">
+          {/* 2. Use the global logout function */}
+          <button onClick={() => logout()} className="flex items-center gap-3 px-3 py-2.5 label-mono text-[10px] text-muted-foreground hover:text-foreground text-left whitespace-nowrap">
             <LogOut size={15} strokeWidth={1.5} /> Sign Out
           </button>
         </nav>
 
         <div className="min-w-0">
-          <Outlet context={{ user, reloadUser: loadMe }} />
+          {/* 3. Pass checkUserAuth to reload the global state when edits are made */}
+          <Outlet context={{ user, reloadUser: checkUserAuth }} />
         </div>
       </div>
     </div>

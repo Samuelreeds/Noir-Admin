@@ -1,6 +1,8 @@
 import React from "react";
 
-// Code-128-style barcode visual generated from the value string
+/**
+ * @param {{ value: string, height?: number, showText?: boolean }} props
+ */
 export default function BarcodeSVG({ value, height = 60, showText = true }) {
   if (!value) return null;
   const bars = [];

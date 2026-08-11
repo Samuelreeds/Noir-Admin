@@ -1,8 +1,23 @@
 import React from "react";
+import { Link } from "react-router-dom";
+import { ArrowLeft } from "lucide-react";
 
+/**
+ * @param {{ icon: any, title: string, subtitle?: string, footer?: any, children: any }} props
+ */
 export default function AuthLayout({ icon: Icon, title, subtitle, footer, children }) {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4">
+    <div className="min-h-screen flex items-center justify-center bg-background px-4 relative">
+      
+      {/* Back to Home Button */}
+      <Link 
+        to="/" 
+        className="absolute top-6 left-6 md:top-8 md:left-8 flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+      >
+        <ArrowLeft className="w-4 h-4" />
+        <span className="hidden sm:inline">Back to Home</span>
+      </Link>
+
       <div className="w-full max-w-md">
         <div className="text-center mb-10">
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-primary mb-4">

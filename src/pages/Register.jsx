@@ -1,82 +1,68 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { UserPlus, Mail, Lock, Loader2 } from "lucide-react";
-import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
-import AuthLayout from "@/components/AuthLayout";
+import { Button as BaseButton } from "@/components/ui/button";
+import { Input as BaseInput } from "@/components/ui/input";
+import { Label as BaseLabel } from "@/components/ui/label";
+import { UserPlus, Mail, Lock, Phone, Loader2 } from "lucide-react";
+import BaseAuthLayout from "@/components/AuthLayout";
 import GoogleIcon from "@/components/GoogleIcon";
-import { toast } from "@/components/ui/use-toast";
+
+// Cast UI components to 'any' to satisfy strict mode prop checking
+/** @type {any} */
+const Button = BaseButton;
+/** @type {any} */
+const Input = BaseInput;
+/** @type {any} */
+const Label = BaseLabel;
+/** @type {any} */
+const AuthLayout = BaseAuthLayout;
 
 export default function Register() {
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [showOtp, setShowOtp] = useState(false);
-  const [otpCode, setOtpCode] = useState("");
 
   const handleSubmit = async (/** @type {React.FormEvent} */ e) => {
     e.preventDefault();
     setError("");
+
+    // Phone validation: allows optional leading '+', requires 8-15 digits
+    const phoneRegex = /^\+?[0-9]{8,15}$/;
+    if (!phoneRegex.test(phone.replace(/\s+/g, ''))) {
+      setError("Please enter a valid phone number (8 to 15 digits).");
+      return;
+    }
+
     if (password !== confirmPassword) {
       setError("Passwords do not match");
       return;
     }
+
     setLoading(true);
     try {
       const { error: signUpError } = await supabase.auth.signUp({ 
         email, 
         password,
         options: {
-            data: { role: 'customer' }
+            data: { 
+              role: 'customer',
+              phone: phone.trim()
+            }
         }
       });
+
       if (signUpError) throw signUpError;
-      setShowOtp(true);
+      
+      // Since email confirmation is OFF, the user is instantly logged in.
+      window.location.href = "/";
     } catch (/** @type {any} */ err) {
       setError(err.message || "Registration failed");
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleVerify = async () => {
-    setError("");
-    setLoading(true);
-    try {
-      const { error: verifyError } = await supabase.auth.verifyOtp({ 
-        email, 
-        token: otpCode,
-        type: 'signup'
-      });
-      if (verifyError) throw verifyError;
-      window.location.href = "/";
-    } catch (/** @type {any} */ err) {
-      setError(err.message || "Invalid verification code");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleResend = async () => {
-    setError("");
-    try {
-      const { error: resendError } = await supabase.auth.resend({
-        type: 'signup',
-        email,
-      });
-      if (resendError) throw resendError;
-      
-      toast({
-        title: "Code sent",
-        description: "Check your email for the new code.",
-      });
-    } catch (/** @type {any} */ err) {
-      setError(err.message || "Failed to resend code");
     }
   };
 
@@ -92,60 +78,6 @@ export default function Register() {
       setError(err.message || "Failed to initialize Google login");
     }
   };
-
-  if (showOtp) {
-    return (
-      <AuthLayout
-        icon={Mail}
-        title="Verify your email"
-        subtitle={`We sent a code to ${email}`}
-      >
-        {error && (
-          <div className="mb-4 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
-            {error}
-          </div>
-        )}
-        <div className="flex justify-center mb-6">
-          <InputOTP
-            maxLength={6}
-            value={otpCode}
-            onChange={setOtpCode}
-            autoFocus
-            autoComplete="one-time-code"
-          >
-            <InputOTPGroup>
-              <InputOTPSlot index={0} />
-              <InputOTPSlot index={1} />
-              <InputOTPSlot index={2} />
-              <InputOTPSlot index={3} />
-              <InputOTPSlot index={4} />
-              <InputOTPSlot index={5} />
-            </InputOTPGroup>
-          </InputOTP>
-        </div>
-        <Button
-          className="w-full h-12 font-medium"
-          onClick={handleVerify}
-          disabled={loading || otpCode.length < 6}
-        >
-          {loading ? (
-            <>
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              Verifying...
-            </>
-          ) : (
-            "Verify"
-          )}
-        </Button>
-        <p className="text-center text-sm text-muted-foreground mt-4">
-          Didn't receive the code?{" "}
-          <button onClick={handleResend} className="text-primary font-medium hover:underline">
-            Resend
-          </button>
-        </p>
-      </AuthLayout>
-    );
-  }
 
   return (
     <AuthLayout
@@ -197,8 +129,24 @@ export default function Register() {
               autoFocus
               placeholder="you@example.com"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(/** @type {any} */ e) => setEmail(e.target.value)}
               className="pl-10 h-12"
+              required
+            />
+          </div>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="phone">Phone Number</Label>
+          <div className="relative">
+            <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
+            <Input
+              id="phone"
+              type="tel"
+              autoComplete="tel"
+              placeholder="+1 555 000 0000"
+              value={phone}
+              onChange={(/** @type {any} */ e) => setPhone(e.target.value)}
+              className="pl-10 h-12 font-mono"
               required
             />
           </div>
@@ -213,7 +161,7 @@ export default function Register() {
               autoComplete="new-password"
               placeholder="••••••••"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(/** @type {any} */ e) => setPassword(e.target.value)}
               className="pl-10 h-12"
               required
             />
@@ -229,7 +177,7 @@ export default function Register() {
               autoComplete="new-password"
               placeholder="••••••••"
               value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
+              onChange={(/** @type {any} */ e) => setConfirmPassword(e.target.value)}
               className="pl-10 h-12"
               required
             />

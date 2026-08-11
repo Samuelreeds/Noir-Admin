@@ -24,7 +24,11 @@ import AccountLayout from '@/components/account/AccountLayout';
 import AccountProfile from '@/pages/account/Profile';
 import AccountOrders from '@/pages/account/Orders';
 import AccountAddresses from '@/pages/account/Addresses';
-// Add page imports here
+
+// 1. Added the Auth page imports
+import Login from '@/pages/Login';
+import Register from '@/pages/Register';
+import ForgotPassword from '@/pages/ForgotPassword';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -52,6 +56,11 @@ const AuthenticatedApp = () => {
   // Render the main app
   return (
     <Routes>
+      {/* 2. Added the Auth routes here */}
+      <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+
       <Route element={<StoreLayout />}>
         <Route path="/" element={<Home />} />
         <Route path="/shop" element={<Shop />} />
@@ -78,9 +87,7 @@ const AuthenticatedApp = () => {
   );
 };
 
-
 function App() {
-
   return (
     <AuthProvider>
       <QueryClientProvider client={queryClientInstance}>
@@ -94,4 +101,4 @@ function App() {
   )
 }
 
-export default App
+export default App;
