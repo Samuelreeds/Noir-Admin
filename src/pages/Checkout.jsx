@@ -10,6 +10,15 @@ import { Image as BaseImage } from "@/components/ui/image";
 /** @type {any} */
 const Image = BaseImage;
 
+const CAMBODIA_PROVINCES = [
+  "Banteay Meanchey", "Battambang", "Kampong Cham", "Kampong Chhnang",
+  "Kampong Speu", "Kampong Thom", "Kampot", "Kandal", "Kep",
+  "Koh Kong", "Kratie", "Mondulkiri", "Oddar Meanchey", "Pailin",
+  "Phnom Penh", "Preah Sihanouk", "Preah Vihear", "Prey Veng",
+  "Pursat", "Ratanakiri", "Siem Reap", "Stung Treng", "Svay Rieng",
+  "Takeo", "Tboung Khmum"
+];
+
 export default function Checkout() {
   const { items, totals, clearCart, cartExpiresAt } = /** @type {any} */ (useCart());
   const { user } = /** @type {any} */ (useAuth());
@@ -19,18 +28,17 @@ export default function Checkout() {
   const [form, setForm] = useState({
     name: "", email: "", phone: "",
     address: "", province: "",
-    payment: "qr", // Default to QR Transfer
+    payment: "qr", 
+    transactionId: "", 
+    transactionImage: /** @type {File | null} */ (null), // New state for receipt screenshot
   });
   const [placing, setPlacing] = useState(false);
   const [done, setDone] = useState(/** @type {string | null} */ (null));
   
-  // Existing State for the Authentication Modal
   const [showAuthModal, setShowAuthModal] = useState(false);
-
-  // New State for the Cart Expiration Modal
   const [showCartExpiredModal, setShowCartExpiredModal] = useState(false);
+  const [showProvinceDropdown, setShowProvinceDropdown] = useState(false);
 
-  // Auto-fill user data if they are logged in
   useEffect(() => {
     if (user) {
       setForm(f => ({
@@ -40,7 +48,6 @@ export default function Checkout() {
         phone: user.phone || f.phone
       }));
       
-      // Auto-advance to shipping if we already have their core info
       if (user.email && user.phone) {
         setOpenStep("shipping");
       }
@@ -55,26 +62,30 @@ export default function Checkout() {
     { id: "payment", label: "Payment Method" },
   ];
 
-  // Validation updated: Phone moved to info, removed from ship
   const validInfo = !!(form.name && form.email && form.phone);
   const validShip = !!(form.address && form.province);
-  const validPay = !!form.payment; 
+  
+  // Validation updated: Require both ID and Image for QR transfers
+  const validPay = form.payment === "cod" || (form.payment === "qr" && form.transactionId.trim() !== "" && form.transactionImage !== null); 
 
-  // Handler for acknowledging the expiration modal
+  const activeShippingFee = form.province 
+    ? (form.province.trim().toLowerCase() === "phnom penh" ? 1.50 : 2.00) 
+    : 0; 
+  
+  const activeTotal = totals.subtotal + activeShippingFee + totals.tax;
+
   const handleCartExpiredAcknowledge = () => {
-    setShowCartExpiredModal(false); // Close the modal
-    clearCart(); // *Then* clear the cart
-    navigate("/shop"); // *Then* return to shop
+    setShowCartExpiredModal(false); 
+    clearCart(); 
+    navigate("/shop"); 
   };
 
   const placeOrder = async () => {
-    // 1. Enforce 10-Minute Cart Expiration Check - Updated to use Modal
     if (cartExpiresAt && Date.now() > parseInt(cartExpiresAt, 10)) {
-      setShowCartExpiredModal(true); // Open modal instead of alert()
-      return; // Stop the order process
+      setShowCartExpiredModal(true); 
+      return; 
     }
 
-    // 2. Enforce User Authentication Check (Preserved)
     if (!user) {
       setShowAuthModal(true);
       return;
@@ -84,17 +95,42 @@ export default function Checkout() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       
-      // Insert main order with the simplified shipping payload
+      let receiptUrl = null;
+
+      // 1. Upload the receipt image to Supabase Storage if QR method is used
+      if (form.payment === "qr" && form.transactionImage) {
+        const fileExt = form.transactionImage.name.split('.').pop();
+        const fileName = `${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`;
+        const filePath = `${session?.user?.id || 'guest'}/${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('receipts')
+          .upload(filePath, form.transactionImage);
+
+        if (uploadError) {
+          throw new Error("Failed to upload receipt image. Please try again.");
+        }
+
+        const { data: publicUrlData } = supabase.storage
+          .from('receipts')
+          .getPublicUrl(filePath);
+
+        receiptUrl = publicUrlData.publicUrl;
+      }
+      
+      // 2. Insert main order using the active (calculated) shipping fees and receipt data
       const { data: orderData, error: orderError } = await supabase
         .from('orders')
         .insert({
           user_id: session?.user?.id || null,
           status: 'pending',
           subtotal: totals.subtotal,
-          shipping_fee: totals.shippingFee,
+          shipping_fee: activeShippingFee, 
           tax: totals.tax,
-          grand_total: totals.total,
+          grand_total: activeTotal, 
           payment_method: form.payment,
+          transaction_reference: form.payment === "qr" ? form.transactionId : null,
+          transaction_receipt_url: receiptUrl, // Store the uploaded image URL
           shipping_address: {
             name: form.name,
             email: form.email,
@@ -108,7 +144,7 @@ export default function Checkout() {
 
       if (orderError) throw orderError;
 
-      // Map cart items to order_items schema
+      // 3. Map and insert order items
       const orderItems = items.map((/** @type {any} */ i) => ({
         order_id: orderData.id,
         product_id: i.product_id || i.id,
@@ -120,7 +156,6 @@ export default function Checkout() {
         total_price: i.price * i.quantity
       }));
 
-      // Insert items
       const { error: itemsError } = await supabase
         .from('order_items')
         .insert(orderItems);
@@ -131,7 +166,7 @@ export default function Checkout() {
       setDone(`MA-${orderData.id.slice(-8).toUpperCase()}`);
     } catch (e) {
       console.error("Checkout error:", e);
-      alert("Order could not be placed. Please try again.");
+      alert(e.message || "Order could not be placed. Please try again.");
     }
     setPlacing(false);
   };
@@ -146,10 +181,10 @@ export default function Checkout() {
         <h1 className="font-display text-4xl md:text-6xl tracking-[-0.04em]">Thank you.</h1>
         <p className="text-muted-foreground mt-4">Your order <span className="font-mono text-foreground">{done}</span> has been received.</p>
         
-        {/* Dynamic messaging based on the selected payment method */}
         {form.payment === "qr" && (
           <div className="mt-6 p-4 border hairline bg-muted/20 max-w-sm mx-auto">
-             <p className="font-mono text-sm mb-2 text-foreground">Our team will contact you shortly with the KHQR code to finalize your payment.</p>
+             <p className="font-mono text-sm mb-2 text-foreground">We have received your transaction receipt.</p>
+             <p className="text-[11px] text-muted-foreground mt-1 font-mono">Our team will verify the payment shortly.</p>
           </div>
         )}
 
@@ -207,7 +242,6 @@ export default function Checkout() {
                       <div className="grid sm:grid-cols-2 gap-4">
                         <input className={inputCls} placeholder="Full Name" value={form.name} onChange={(e) => set("name", e.target.value)} />
                         <input className={inputCls} type="email" placeholder="Email" value={form.email} onChange={(e) => set("email", e.target.value)} />
-                        {/* Phone input moved here */}
                         <input className={`${inputCls} sm:col-span-2`} type="tel" placeholder="Phone Number" value={form.phone} onChange={(e) => set("phone", e.target.value)} />
                         <button onClick={() => setOpenStep("shipping")} disabled={!validInfo} className="sm:col-span-2 bg-foreground text-background py-3 label-mono disabled:opacity-40">Continue to Shipping</button>
                       </div>
@@ -215,14 +249,53 @@ export default function Checkout() {
                     {step.id === "shipping" && (
                       <div className="grid sm:grid-cols-2 gap-4">
                         <input className={`${inputCls} sm:col-span-2`} placeholder="Address" value={form.address} onChange={(e) => set("address", e.target.value)} />
-                        <input className={`${inputCls} sm:col-span-2`} placeholder="Province / State" value={form.province} onChange={(e) => set("province", e.target.value)} />
+                        
+                        <div className="relative sm:col-span-2">
+                          <div className="relative flex items-center">
+                            <input 
+                              className={inputCls} 
+                              placeholder="Search or Select Province" 
+                              value={form.province} 
+                              onChange={(e) => {
+                                set("province", e.target.value);
+                                setShowProvinceDropdown(true);
+                              }}
+                              onFocus={() => setShowProvinceDropdown(true)}
+                              onBlur={() => setShowProvinceDropdown(false)}
+                            />
+                            <ChevronDown size={16} className="absolute right-4 text-muted-foreground pointer-events-none" />
+                          </div>
+                          
+                          {showProvinceDropdown && (
+                            <div 
+                              className="absolute top-full left-0 w-full bg-background border hairline max-h-48 overflow-y-auto z-20 shadow-xl mt-1 inertia-fade"
+                              onMouseDown={(e) => e.preventDefault()}
+                            >
+                              {CAMBODIA_PROVINCES.filter(p => p.toLowerCase().includes(form.province.toLowerCase())).map(p => (
+                                <div
+                                  key={p}
+                                  className="px-4 py-3 font-mono text-sm hover:bg-muted/50 cursor-pointer transition-colors"
+                                  onClick={() => {
+                                    set("province", p);
+                                    setShowProvinceDropdown(false);
+                                  }}
+                                >
+                                  {p}
+                                </div>
+                              ))}
+                              {CAMBODIA_PROVINCES.filter(p => p.toLowerCase().includes(form.province.toLowerCase())).length === 0 && (
+                                <div className="px-4 py-3 font-mono text-sm text-muted-foreground">No matching province found.</div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
                         <button onClick={() => setOpenStep("payment")} disabled={!validShip} className="sm:col-span-2 bg-foreground text-background py-3 label-mono disabled:opacity-40">Continue to Payment</button>
                       </div>
                     )}
                     {step.id === "payment" && (
                       <div className="space-y-4">
                         
-                        {/* Streamlined Payment Options */}
                         <div className="grid sm:grid-cols-2 gap-4">
                           {["qr", "cod"].map((m) => (
                             <button key={m} onClick={() => set("payment", m)} className={`border py-4 label-mono text-[11px] flex flex-col items-center gap-2 ${form.payment === m ? "bg-foreground text-background border-foreground" : "hairline hover:bg-muted/50"}`}>
@@ -231,16 +304,44 @@ export default function Checkout() {
                           ))}
                         </div>
 
-                        {/* Helper Text for QR Method */}
                         {form.payment === "qr" && (
-                          <div className="p-4 border hairline bg-muted/20 text-center space-y-1">
-                             <p className="font-mono text-sm text-foreground">Pay via local banking app</p>
-                             <p className="text-[11px] text-muted-foreground font-mono">(ABA, ACLEDA, etc. KHQR will be provided after checkout)</p>
+                          <div className="p-6 border hairline bg-muted/10 flex flex-col items-center space-y-5 text-center inertia-fade">
+                             <p className="font-mono text-sm text-foreground">Scan to Pay (KHQR)</p>
+                             
+                             <div className="w-48 h-48 bg-white p-2 border hairline">
+                               <img 
+                                 src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=MONOLITHIC_ATELIER_KHQR_PLACEHOLDER" 
+                                 alt="Company KHQR" 
+                                 className="w-full h-full object-contain" 
+                               />
+                             </div>
+                             
+                             <div className="w-full space-y-4 text-left pt-2">
+                               <div className="space-y-2">
+                                 <label className="label-mono text-muted-foreground text-[10px]">1. Submit Transaction ID / Reference</label>
+                                 <input 
+                                   className={inputCls} 
+                                   placeholder="e.g., 1234567890" 
+                                   value={form.transactionId} 
+                                   onChange={(e) => set("transactionId", e.target.value)} 
+                                 />
+                               </div>
+                               
+                               <div className="space-y-2">
+                                 <label className="label-mono text-muted-foreground text-[10px]">2. Upload Payment Screenshot</label>
+                                 <input 
+                                   type="file"
+                                   accept="image/*"
+                                   className="w-full border hairline px-3 py-2 outline-none focus:border-foreground font-mono text-[13px] bg-background text-muted-foreground file:mr-4 file:py-1 file:px-3 file:border-0 file:bg-foreground file:text-background file:font-mono file:text-[11px] file:uppercase file:cursor-pointer hover:file:opacity-90"
+                                   onChange={(e) => set("transactionImage", e.target.files?.[0] || null)}
+                                 />
+                               </div>
+                             </div>
                           </div>
                         )}
 
                         <button onClick={placeOrder} disabled={!validPay || placing} className="w-full bg-foreground text-background py-4 label-mono flex items-center justify-center gap-2 disabled:opacity-40 mt-4">
-                          {placing ? "Placing Order…" : <>Place Order — ${totals.total.toFixed(2)}</>}
+                          {placing ? "Placing Order…" : <>Place Order — ${activeTotal.toFixed(2)}</>}
                         </button>
                         <p className="flex items-center justify-center gap-2 label-mono text-muted-foreground text-[10px]"><Lock size={11} /> Secure encrypted transaction</p>
                       </div>
@@ -273,18 +374,20 @@ export default function Checkout() {
             </div>
             <div className="border-t hairline mt-5 pt-5 space-y-2.5">
               <div className="flex justify-between label-mono text-muted-foreground"><span>Subtotal</span><span className="font-mono text-foreground">${totals.subtotal.toFixed(2)}</span></div>
-              <div className="flex justify-between label-mono text-muted-foreground"><span>Shipping</span><span className="font-mono text-foreground">{totals.shippingFee === 0 ? "Free" : `$${totals.shippingFee.toFixed(2)}`}</span></div>
+              
+              {/* Shipping Text Logic Updated */}
+              <div className="flex justify-between label-mono text-muted-foreground"><span>Shipping</span><span className="font-mono text-foreground">${activeShippingFee.toFixed(2)}</span></div>
+              
               <div className="flex justify-between label-mono text-muted-foreground"><span>Tax</span><span className="font-mono text-foreground">${totals.tax.toFixed(2)}</span></div>
               <div className="flex justify-between pt-3 border-t hairline">
                 <span className="font-display uppercase">Total</span>
-                <span className="font-mono text-xl">${totals.total.toFixed(2)}</span>
+                <span className="font-mono text-xl">${activeTotal.toFixed(2)}</span>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Existing Auth Modal Overlay (Preserved) */}
       {showAuthModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
           <div className="bg-background border hairline max-w-md w-full p-6 shadow-2xl inertia-fade">
@@ -310,7 +413,6 @@ export default function Checkout() {
         </div>
       )}
 
-      {/* NEW Cart Expired Modal Overlay - Content updated to match image message */}
       {showCartExpiredModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
           <div className="bg-background border hairline max-w-md w-full p-6 shadow-2xl inertia-fade relative z-[60]">
@@ -320,7 +422,7 @@ export default function Checkout() {
             </p>
             <div className="flex gap-4">
               <button 
-                onClick={handleCartExpiredAcknowledge} // User acknowledging is what triggers clearing and navigating
+                onClick={handleCartExpiredAcknowledge} 
                 className="w-full py-3 bg-foreground text-background label-mono transition-opacity hover:opacity-90"
               >
                 Return to Shop
