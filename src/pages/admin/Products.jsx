@@ -1,154 +1,342 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { Plus, Search, Pencil, Trash2 } from "lucide-react";
-import { supabase } from "@/lib/supabase";
-import { Image as BaseImage } from "@/components/ui/image";
-import ProductForm from "@/components/admin/ProductForm";
+import React, { useState, useEffect } from 'react';
+import { RefreshCcw, Download, Search, Plus, Trash2, Edit, X, ChevronLeft, ChevronRight, Package } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
-/** @type {any} */
-const Image = BaseImage;
+const ITEMS_PER_PAGE = 20;
 
-export default function AdminProducts() {
-  const [products, setProducts] = useState(/** @type {any[]} */ ([]));
-  const [categories, setCategories] = useState(/** @type {any[]} */ ([]));
-  const [brands, setBrands] = useState(/** @type {any[]} */ ([]));
-  const [loading, setLoading] = useState(true);
-  const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [formOpen, setFormOpen] = useState(false);
-  const [editing, setEditing] = useState(/** @type {any} */ (null));
+export default function Products() {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  
+  // Form state for creating a new product
+  const [form, setForm] = useState({
+    name: '',
+    code: '',
+    price: '',
+    discount: '0',
+    stock: '10',
+    image: '',
+    category: 'General'
+  });
 
-  const load = async () => {
-    setLoading(true);
-    try {
-      const [ps, cs, bs] = await Promise.all([
-        supabase.from('products').select('*').order('created_at', { ascending: false }).limit(200),
-        supabase.from('categories').select('*').order('created_at', { ascending: false }).limit(100),
-        supabase.from('brands').select('*').order('created_at', { ascending: false }).limit(100),
-      ]);
-      setProducts(ps.data || []); 
-      setCategories(cs.data || []); 
-      setBrands(bs.data || []);
-    } catch (e) { 
-      console.error(e); 
+  const queryClient = useQueryClient();
+
+  // 1. Fetch Products from Supabase with Caching
+  const { data: products = [], isLoading, refetch, isFetching } = useQuery({
+    queryKey: ['admin-products-list'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('products')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return data || [];
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // 2. Mutation to Insert a New Product
+  const addProductMutation = useMutation({
+    mutationFn: async (/** @type {any} */ newProd) => {
+      const { data, error } = await supabase
+        .from('products')
+        .insert([newProd])
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-products-list'] });
+      setIsAddModalOpen(false);
+      setForm({ name: '', code: '', price: '', discount: '0', stock: '10', image: '', category: 'General' });
+    },
+    onError: (err) => {
+      console.error("Error creating product:", err);
+      alert("Failed to create product. Please check your Supabase table schema.");
     }
-    setLoading(false);
+  });
+
+  // Reset pagination on search
+  useEffect(() => { setCurrentPage(1); }, [searchQuery]);
+
+  // Filter Logic
+  const filteredProducts = products.filter((/** @type {any} */ p) => {
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      const string = `${p.name || ''} ${p.code || ''} ${p.category || ''}`.toLowerCase();
+      if (!string.includes(q)) return false;
+    }
+    return true;
+  });
+
+  // Pagination Logic
+  const totalPages = Math.ceil(filteredProducts.length / ITEMS_PER_PAGE) || 1;
+  const paginatedProducts = filteredProducts.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+
+  // Export to Excel (CSV)
+  const exportToCSV = () => {
+    if (filteredProducts.length === 0) return alert("No data to export!");
+    const headers = ['Product Code', 'Product Name', 'Price', 'Discount', 'Stock', 'Status'];
+    const rows = filteredProducts.map((/** @type {any} */ p) => [
+      p.code || 'N/A',
+      p.name || 'N/A',
+      p.price || 0,
+      p.discount || 0,
+      p.stock > 0 ? 'In-Stock' : 'Out of Stock',
+      p.status || 'ACTIVE'
+    ].map(field => `"${String(field).replace(/"/g, '""')}"`).join(','));
+
+    const blob = new Blob([[headers.join(','), ...rows].join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.setAttribute('download', `products_export_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
-  useEffect(() => { load(); }, []);
-
-  const catName = (/** @type {string} */ id) => categories.find((/** @type {any} */ c) => c.id === id)?.name || "—";
-  const brandName = (/** @type {string} */ id) => brands.find((/** @type {any} */ b) => b.id === id)?.name || "—";
-
-  const filtered = useMemo(() => {
-    return products.filter((/** @type {any} */ p) => {
-      if (statusFilter !== "all" && p.status !== statusFilter) return false;
-      if (query) {
-        const q = query.toLowerCase();
-        return (p.name?.toLowerCase().includes(q) || p.sku?.toLowerCase().includes(q) || p.barcode?.toLowerCase().includes(q));
-      }
-      return true;
+  const handleSubmitNew = (e) => {
+    e.preventDefault();
+    if (!form.name || !form.price) return alert("Please fill in the product name and price.");
+    addProductMutation.mutate({
+      name: form.name,
+      code: form.code || `PRD-${Math.floor(1000 + Math.random() * 9000)}`,
+      price: parseFloat(form.price),
+      discount: parseFloat(form.discount || 0),
+      stock: parseInt(form.stock || 10),
+      image: form.image || 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=300&q=80',
+      status: 'active'
     });
-  }, [products, query, statusFilter]);
-
-  const openNew = () => { setEditing(null); setFormOpen(true); };
-  const openEdit = (/** @type {any} */ p) => { setEditing(p); setFormOpen(true); };
-  const remove = async (/** @type {any} */ p) => {
-    if (!window.confirm(`Delete "${p.name}"?`)) return;
-    await supabase.from('products').delete().eq('id', p.id);
-    load();
   };
 
   return (
-    <div className="space-y-8">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="label-mono text-muted-foreground mb-2">— Inventory</p>
-          <h1 className="font-display text-4xl md:text-6xl tracking-[-0.04em] leading-none">Products.</h1>
+    <div className="w-full bg-white rounded-md shadow-sm border border-slate-200 relative flex flex-col h-[calc(100vh-8rem)]">
+      
+      {/* Toolbar */}
+      <div className="p-4 border-b border-slate-200 flex flex-wrap gap-4 items-center justify-between bg-slate-50/50 shrink-0">
+        <div className="relative flex-1 max-w-md">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input 
+            type="text" 
+            value={searchQuery} 
+            onChange={(e) => setSearchQuery(e.target.value)} 
+            placeholder="Search products by name or code..." 
+            className="border border-slate-300 rounded pl-9 pr-4 py-2 text-sm w-full outline-none focus:border-slate-500" 
+          />
         </div>
-        <button onClick={openNew} className="flex items-center gap-2 bg-foreground text-background px-5 py-3 label-mono hover:opacity-85">
-          <Plus size={15} /> New Product
-        </button>
-      </header>
-
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-2 border hairline px-3 py-2 flex-1 min-w-[200px] max-w-sm">
-          <Search size={15} className="text-muted-foreground" />
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Name, SKU, barcode…" className="bg-transparent text-sm w-full focus:outline-none" />
-        </div>
-        <div className="flex border hairline">
-          {["all", "active", "archived"].map((s) => (
-            <button key={s} onClick={() => setStatusFilter(s)} className={`px-4 py-2 label-mono text-[9px] capitalize ${statusFilter === s ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"}`}>{s}</button>
-          ))}
+        <div className="flex gap-2">
+          <button onClick={() => refetch()} className="flex items-center gap-2 px-3 py-1.5 border border-slate-300 rounded text-sm hover:bg-slate-50 transition-colors">
+            <RefreshCcw size={14} className={isFetching ? "animate-spin" : ""} /> Refresh
+          </button>
+          <button onClick={exportToCSV} className="flex items-center gap-2 px-3 py-1.5 border border-slate-300 rounded text-sm hover:bg-slate-50 transition-colors">
+            <Download size={14} /> Export Excel
+          </button>
+          <button onClick={() => setIsAddModalOpen(true)} className="flex items-center gap-2 px-3 py-1.5 bg-slate-800 text-white rounded text-sm hover:bg-slate-700 transition-colors">
+            <Plus size={14} /> Create New
+          </button>
         </div>
       </div>
 
-      {loading ? (
-        <div className="py-20 flex justify-center"><div className="w-6 h-6 border border-foreground border-t-transparent rounded-full animate-spin" /></div>
-      ) : (
-        <div className="border hairline overflow-x-auto">
-          <table className="w-full text-sm min-w-[720px]">
-            <thead>
-              <tr className="border-b hairline">
-                {["", "Name", "Category", "Brand", "Price", "Stock", "Status", "Flags", ""].map((h) => (
-                  <th key={h} className="label-mono text-[9px] text-muted-foreground text-left px-4 py-3 font-normal">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y hairline">
-              {filtered.map((/** @type {any} */ p) => {
-                const hasDiscount = p.discount_price != null && p.discount_price < p.price;
+      {/* Table */}
+      <div className="overflow-x-auto flex-1 custom-scrollbar">
+        <table className="w-full text-left text-sm whitespace-nowrap">
+          <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-medium sticky top-0 z-10">
+            <tr>
+              <th className="px-4 py-3">Product Code</th>
+              <th className="px-4 py-3">Product</th>
+              <th className="px-4 py-3 text-right">Price($)</th>
+              <th className="px-4 py-3 text-right">Discount($)</th>
+              <th className="px-4 py-3 text-center">Product Stock</th>
+              <th className="px-4 py-3 text-center">Status</th>
+              <th className="px-4 py-3 text-right">Action</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {isLoading ? (
+              <tr><td colSpan={7} className="px-4 py-12 text-center text-slate-500">Loading products...</td></tr>
+            ) : paginatedProducts.length === 0 ? (
+              <tr><td colSpan={7} className="px-4 py-12 text-center text-slate-500">No products found. Click 'Create New' to add one.</td></tr>
+            ) : (
+              paginatedProducts.map((/** @type {any} */ p) => {
+                const isActive = p.status !== 'inactive';
+                const isOutOfStock = p.stock <= 0;
+
                 return (
-                  <tr key={p.id} className="hover:bg-muted/50">
-                    <td className="px-4 py-3">
-                      <div className="w-10 h-12 overflow-hidden bg-muted">
-                        {p.images?.[0] && <Image src={p.images[0]} alt="" className="w-full h-full" />}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <p className="font-medium">{p.name}</p>
-                      <p className="label-mono text-muted-foreground text-[9px] mt-0.5">{p.sku || "—"}</p>
-                    </td>
-                    <td className="px-4 py-3 label-mono text-[9px] text-muted-foreground">{catName(p.category_id)}</td>
-                    <td className="px-4 py-3 label-mono text-[9px] text-muted-foreground">{brandName(p.brand_id)}</td>
-                    <td className="px-4 py-3 font-mono">
-                      {hasDiscount ? (
-                        <div>
-                          <span>${p.discount_price.toFixed(2)}</span>
-                          <span className="block text-[10px] text-muted-foreground line-through">${p.price.toFixed(2)}</span>
+                  <tr key={p.id} className="hover:bg-slate-50/50">
+                    <td className="px-4 py-4 font-mono text-xs text-slate-600">{p.code || 'N/A'}</td>
+                    <td className="px-4 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded overflow-hidden bg-slate-100 border border-slate-200 shrink-0">
+                          {p.image ? (
+                            <img src={p.image} alt={p.name} className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-slate-400"><Package size={18} /></div>
+                          )}
                         </div>
-                      ) : <span>${p.price.toFixed(2)}</span>}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`font-mono ${p.stock <= 0 ? "text-destructive" : p.stock <= 5 ? "text-amber-600" : ""}`}>{p.stock}</span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`label-mono text-[9px] px-2 py-1 ${p.status === "active" ? "bg-foreground text-background" : "bg-muted text-muted-foreground"}`}>{p.status}</span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex gap-1">
-                        {p.featured && <span className="label-mono text-[8px] text-muted-foreground">F</span>}
-                        {p.is_new && <span className="label-mono text-[8px] text-muted-foreground">N</span>}
-                        {p.is_best_seller && <span className="label-mono text-[8px] text-muted-foreground">B</span>}
+                        <span className="font-medium text-slate-900">{p.name}</span>
                       </div>
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <button onClick={() => openEdit(p)} className="p-1.5 hover:bg-muted"><Pencil size={14} /></button>
-                        <button onClick={() => remove(p)} className="p-1.5 hover:bg-muted text-destructive"><Trash2 size={14} /></button>
+                    <td className="px-4 py-4 text-right font-medium text-slate-900">${p.price?.toFixed(2)}</td>
+                    <td className="px-4 py-4 text-right text-slate-600">${p.discount?.toFixed(2) || '0.00'}</td>
+                    <td className="px-4 py-4 text-center">
+                      <span className={`inline-block px-2.5 py-1 rounded text-xs font-medium border ${
+                        isOutOfStock 
+                          ? 'bg-rose-50 text-rose-700 border-rose-200' 
+                          : 'bg-slate-100 text-slate-700 border-slate-200'
+                      }`}>
+                        {isOutOfStock ? 'Out of Stock' : 'In-Stock'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-4 text-center">
+                      <span className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-medium tracking-wider border ${
+                        isActive 
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                          : 'bg-rose-50 text-rose-700 border-rose-200'
+                      }`}>
+                        {isActive ? 'ACTIVE' : 'IN-ACTIVE'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="flex items-center justify-end gap-1 text-slate-400">
+                        <button className="p-1.5 hover:text-slate-800 transition-colors border border-transparent hover:border-slate-300 rounded" title="Edit">
+                          <Edit size={14} />
+                        </button>
+                        <button className="p-1.5 hover:text-red-600 transition-colors border border-transparent hover:border-slate-300 rounded" title="Delete">
+                          <Trash2 size={14} />
+                        </button>
                       </div>
                     </td>
                   </tr>
                 );
-              })}
-              {filtered.length === 0 && (
-                <tr><td colSpan={9} className="px-4 py-10 text-center text-sm text-muted-foreground">No products found.</td></tr>
-              )}
-            </tbody>
-          </table>
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Pagination */}
+      <div className="px-4 py-3 border-t border-slate-200 bg-white flex items-center justify-between shrink-0">
+        <div className="text-sm text-slate-500">
+          Showing {filteredProducts.length === 0 ? 0 : (currentPage - 1) * ITEMS_PER_PAGE + 1} to {Math.min(currentPage * ITEMS_PER_PAGE, filteredProducts.length)} of {filteredProducts.length} entries
+        </div>
+        <div className="flex gap-2">
+          <button 
+            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+            disabled={currentPage === 1}
+            className="flex items-center gap-1 px-3 py-1.5 border border-slate-300 rounded text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            <ChevronLeft size={16} /> Previous
+          </button>
+          <button 
+            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+            disabled={currentPage === totalPages || totalPages === 0}
+            className="flex items-center gap-1 px-3 py-1.5 border border-slate-300 rounded text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            Next <ChevronRight size={16} />
+          </button>
+        </div>
+      </div>
+
+      {/* --- CREATE NEW PRODUCT MODAL --- */}
+      {isAddModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50">
+              <h2 className="text-lg font-semibold text-slate-800">Create New Product</h2>
+              <button onClick={() => setIsAddModalOpen(false)} className="p-2 hover:bg-slate-200 rounded-full text-slate-500 transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+            
+            <form onSubmit={handleSubmitNew} className="p-6 space-y-4 max-h-[75vh] overflow-y-auto custom-scrollbar">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Product Name</label>
+                  <input 
+                    type="text" 
+                    value={form.name} 
+                    onChange={(e) => setForm({...form, name: e.target.value})} 
+                    placeholder="e.g. Obsidian Trench Coat" 
+                    required
+                    className="w-full border border-slate-300 rounded px-3 py-2 text-sm outline-none focus:border-slate-500" 
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Product Code / SKU</label>
+                  <input 
+                    type="text" 
+                    value={form.code} 
+                    onChange={(e) => setForm({...form, code: e.target.value})} 
+                    placeholder="e.g. BRC-01" 
+                    className="w-full border border-slate-300 rounded px-3 py-2 text-sm outline-none focus:border-slate-500" 
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Price ($)</label>
+                  <input 
+                    type="number" 
+                    step="0.01" 
+                    value={form.price} 
+                    onChange={(e) => setForm({...form, price: e.target.value})} 
+                    placeholder="450.00" 
+                    required
+                    className="w-full border border-slate-300 rounded px-3 py-2 text-sm outline-none focus:border-slate-500" 
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Discount ($)</label>
+                  <input 
+                    type="number" 
+                    step="0.01" 
+                    value={form.discount} 
+                    onChange={(e) => setForm({...form, discount: e.target.value})} 
+                    placeholder="0.00" 
+                    className="w-full border border-slate-300 rounded px-3 py-2 text-sm outline-none focus:border-slate-500" 
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Stock Qty</label>
+                  <input 
+                    type="number" 
+                    value={form.stock} 
+                    onChange={(e) => setForm({...form, stock: e.target.value})} 
+                    placeholder="10" 
+                    className="w-full border border-slate-300 rounded px-3 py-2 text-sm outline-none focus:border-slate-500" 
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Image URL</label>
+                <input 
+                  type="url" 
+                  value={form.image} 
+                  onChange={(e) => setForm({...form, image: e.target.value})} 
+                  placeholder="https://images.unsplash.com/..." 
+                  className="w-full border border-slate-300 rounded px-3 py-2 text-sm outline-none focus:border-slate-500" 
+                />
+              </div>
+
+              <div className="pt-4 flex justify-end gap-3 border-t border-slate-200">
+                <button type="button" onClick={() => setIsAddModalOpen(false)} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded transition-colors">
+                  Cancel
+                </button>
+                <button type="submit" disabled={addProductMutation.isPending} className="px-4 py-2 text-sm font-medium bg-slate-900 text-white rounded hover:bg-slate-800 transition-colors disabled:opacity-50">
+                  {addProductMutation.isPending ? 'Creating...' : 'Save Product'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 
-      <ProductForm open={formOpen} onClose={() => setFormOpen(false)} onSaved={load} product={editing} categories={categories} brands={brands} />
     </div>
   );
 }

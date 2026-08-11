@@ -1,94 +1,107 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { Link, Outlet, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/lib/AuthContext";
-import { LayoutDashboard, Package, ShoppingBag, Tags, Barcode, LogOut, ExternalLink } from "lucide-react";
-
-const NAV = [
-  { to: "/admin", label: "Dashboard", icon: LayoutDashboard, end: true },
-  { to: "/admin/products", label: "Products", icon: Package },
-  { to: "/admin/orders", label: "Orders", icon: ShoppingBag },
-  { to: "/admin/catalog", label: "Catalog", icon: Tags },
-  { to: "/admin/barcodes", label: "Barcodes", icon: Barcode },
-];
+import { 
+  LayoutDashboard, ShoppingCart, CreditCard, Users, 
+  Package, Settings, LogOut, ChevronDown, ChevronRight
+} from "lucide-react";
 
 export default function AdminLayout() {
   const navigate = useNavigate();
   const location = useLocation();
-  // 1. Hook directly into our global Auth Context!
-  const { user, isLoadingAuth, logout } = useAuth(); 
+  const { user, isLoadingAuth, logout } = useAuth();
+  
+  // State for collapsible menus
+  const [openMenus, setOpenMenus] = useState({ products: true });
 
   useEffect(() => {
-    // Only run the checks once the auth provider has finished loading
     if (!isLoadingAuth) {
       if (!user) { 
         navigate("/login", { replace: true }); 
       } else if (user?.role?.trim() !== "admin") { 
-        // Added .trim() in case of trailing spaces in the DB
-        navigate("/", { replace: true }); 
+        // Note: In production, redirect to main storefront domain here
+        window.location.href = "http://localhost:5173"; 
       }
     }
   }, [user, isLoadingAuth, navigate]);
 
-  if (isLoadingAuth) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="w-6 h-6 border border-foreground border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
+  if (isLoadingAuth || !user || user?.role?.trim() !== "admin") return null;
 
-  // Double-check to prevent flashing the admin UI before navigating away
-  if (!user || user?.role?.trim() !== "admin") return null;
+  const toggleMenu = (/** @type {string} */ key) => {
+    setOpenMenus(prev => ({ ...prev, [key]: !prev[key] }));
+  };
 
-  const isActive = (/** @type {any} */ item) => item.end ? location.pathname === item.to : location.pathname.startsWith(item.to) && item.to !== "/admin";
+  const navItemClass = (/** @type {string} */ path, exact = false) => {
+    const isActive = exact ? location.pathname === path : location.pathname.startsWith(path);
+    return `flex items-center gap-3 px-4 py-3 text-sm font-medium transition-colors ${
+      isActive ? "bg-slate-100 text-slate-900 border-r-4 border-slate-900" : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+    }`;
+  };
 
   return (
-    <div className="min-h-screen bg-background flex">
-      <aside className="w-60 shrink-0 hidden md:flex flex-col fixed inset-y-0 left-0 border-r hairline bg-background">
-        <div className="px-6 py-6 border-b hairline">
-          <Link to="/admin" className="font-display text-lg tracking-[-0.04em] leading-none block">MONOLITHIC</Link>
-          <p className="label-mono text-muted-foreground mt-1 text-[9px]">Atelier · Admin</p>
+    <div className="min-h-screen bg-[#F8F9FA] flex font-sans">
+      {/* Sidebar */}
+      <aside className="w-64 shrink-0 hidden md:flex flex-col fixed inset-y-0 left-0 bg-white border-r border-slate-200 z-50">
+        <div className="h-16 flex items-center px-6 border-b border-slate-200">
+          <Link to="/" className="font-display text-xl tracking-widest font-semibold">BARE</Link>
         </div>
-        <nav className="flex-1 py-4 px-3 space-y-1">
-          {NAV.map((item) => {
-            const Icon = item.icon;
-            return (
-              <Link key={item.to} to={item.to} end={item.end} className={`flex items-center gap-3 px-3 py-2.5 label-mono text-[10px] transition-colors ${isActive(item) ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}>
-                <Icon size={15} strokeWidth={1.5} /> {item.label}
-              </Link>
-            );
-          })}
-        </nav>
-        <div className="border-t hairline p-3 space-y-1">
-          <Link to="/" className="flex items-center gap-3 px-3 py-2.5 label-mono text-[10px] text-muted-foreground hover:text-foreground">
-            <ExternalLink size={15} strokeWidth={1.5} /> View Store
+        
+        <nav className="flex-1 overflow-y-auto py-4 custom-scrollbar">
+          <Link to="/" className={navItemClass("/", true)}>
+            <LayoutDashboard size={18} /> Dashboard
           </Link>
-          {/* 2. Used the global logout function */}
-          <button onClick={() => logout()} className="w-full flex items-center gap-3 px-3 py-2.5 label-mono text-[10px] text-muted-foreground hover:text-foreground text-left">
-            <LogOut size={15} strokeWidth={1.5} /> Sign Out
-          </button>
-        </div>
+          <Link to="/orders" className={navItemClass("/orders")}>
+            <ShoppingCart size={18} /> Product Orders
+          </Link>
+          <Link to="/payments" className={navItemClass("/payments")}>
+            <CreditCard size={18} /> Payment History
+          </Link>
+          <Link to="/customers" className={navItemClass("/customers")}>
+            <Users size={18} /> Customer
+          </Link>
+          
+          {/* Collapsible Product Management */}
+          <div>
+            <button onClick={() => toggleMenu('products')} className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-slate-600 hover:bg-slate-50">
+              <div className="flex items-center gap-3"><Package size={18} /> Product Management</div>
+              {openMenus.products ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+            </button>
+            {openMenus.products && (
+              <div className="bg-slate-50 py-1">
+                {["Product", "Category", "Product Type", "Advertisement", "Color", "Size", "Inventory"].map(sub => (
+                  <Link key={sub} to={`/products/${sub.toLowerCase().replace(' ', '-')}`} className="block px-12 py-2 text-sm text-slate-600 hover:text-slate-900">— {sub}</Link>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <Link to="/web-setup" className={navItemClass("/web-setup")}>
+            <Settings size={18} /> Web Setup
+          </Link>
+        </nav>
       </aside>
 
-      <div className="md:hidden fixed top-0 inset-x-0 border-b hairline bg-background z-40 flex items-center justify-between px-4 py-3">
-        <Link to="/admin" className="font-display text-sm tracking-[-0.04em]">MONOLITHIC · Admin</Link>
-        <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
-          {NAV.map((item) => {
-            const Icon = item.icon;
-            return (
-              <Link key={item.to} to={item.to} className={`p-2 ${isActive(item) ? "text-foreground" : "text-muted-foreground"}`}>
-                <Icon size={16} strokeWidth={1.5} />
-              </Link>
-            );
-          })}
-        </div>
-      </div>
+      {/* Main Content Area */}
+      <div className="flex-1 md:ml-64 flex flex-col min-h-screen">
+        {/* Top Navbar */}
+        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 sticky top-0 z-40">
+           <div className="flex items-center gap-4">
+             <h1 className="text-lg font-semibold text-slate-800 uppercase">
+               {/* Dynamically show page title based on route if desired, defaulting to Dashboard */}
+               {location.pathname === "/" ? "Dashboard" : location.pathname.replace('/', '').replace('-', ' ')}
+             </h1>
+           </div>
+           <div className="flex items-center gap-4 text-sm">
+             <button onClick={() => logout()} className="flex items-center gap-2 text-slate-600 hover:text-slate-900 ml-4 border-l pl-4">
+               <LogOut size={16} /> <span className="text-xs">{user.email}</span>
+             </button>
+           </div>
+        </header>
 
-      <main className="flex-1 md:ml-60 pt-16 md:pt-0 min-w-0">
-        <div className="max-w-[1400px] mx-auto px-4 md:px-10 py-8 md:py-12">
+        <main className="flex-1 p-6 overflow-x-hidden">
           <Outlet />
-        </div>
-      </main>
+        </main>
+      </div>
     </div>
   );
 }
