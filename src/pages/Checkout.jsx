@@ -180,7 +180,7 @@ export default function Checkout() {
 
       clearCart();
       setDone(`MA-${orderData.id.slice(-8).toUpperCase()}`);
-    } catch (e) {
+    } catch (/** @type {any} */ e) {
       console.error("Checkout error:", e);
       alert(e.message || "Order could not be placed. Please try again.");
     }

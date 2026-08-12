@@ -64,7 +64,7 @@ export default function Orders() {
     onSuccess: (updatedData) => {
       queryClient.invalidateQueries({ queryKey: ['admin-orders'] });
       // FIXED: Removed the `: any` TypeScript annotation
-      setSelectedOrder((prev) => ({ ...prev, ...updatedData }));
+      setSelectedOrder((/** @type {any} */ prev) => ({ ...prev, ...updatedData }));
     },
     onError: (err) => alert("Failed to update status: " + err.message)
   });
@@ -84,7 +84,7 @@ export default function Orders() {
     onSuccess: (updatedData) => {
       queryClient.invalidateQueries({ queryKey: ['admin-orders'] });
       // FIXED: Removed the `: any` TypeScript annotation
-      setSelectedOrder((prev) => ({ ...prev, ...updatedData }));
+      setSelectedOrder((/** @type {any} */ prev) => ({ ...prev, ...updatedData }));
       setUploadingProof(null);
     },
     onError: (err) => {

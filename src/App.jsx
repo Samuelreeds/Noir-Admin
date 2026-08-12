@@ -38,6 +38,7 @@ import AdminSizes from '@/pages/admin/Sizes';
 import AdminInventory from '@/pages/admin/Inventory';
 import AdminWebSetup from '@/pages/admin/WebSetup';
 
+
 // Auth Imports
 import Login from '@/pages/Login';
 import Register from '@/pages/Register';
@@ -78,7 +79,8 @@ const AuthenticatedApp = () => {
         
         {/* Notice paths no longer need "/admin" since the whole domain is admin! */}
         <Route element={<AdminLayout />}>
-        <Route path="/products/inventory" element={<AdminInventory />} />
+          <Route path="/products" element={<AdminProducts />} />
+          <Route path="/products/inventory" element={<AdminInventory />} />
           <Route path="/products/size" element={<AdminSizes />} />
           <Route path="/products/color" element={<AdminColors />} />
           <Route path="/products/advertisement" element={<AdminAdvertisement />} />
