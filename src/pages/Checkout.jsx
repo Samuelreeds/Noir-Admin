@@ -30,7 +30,7 @@ export default function Checkout() {
     address: "", province: "",
     payment: "qr", 
     transactionId: "", 
-    transactionImage: /** @type {File | null} */ (null), // New state for receipt screenshot
+    transactionImage: /** @type {File | null} */ (null),
   });
   const [placing, setPlacing] = useState(false);
   const [done, setDone] = useState(/** @type {string | null} */ (null));
@@ -38,6 +38,28 @@ export default function Checkout() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showCartExpiredModal, setShowCartExpiredModal] = useState(false);
   const [showProvinceDropdown, setShowProvinceDropdown] = useState(false);
+
+  // --- NEW: Admin Settings State ---
+  const [storeSettings, setStoreSettings] = useState({
+    shipping_pp_price: 1.50,
+    shipping_province_price: 2.50,
+    enable_tax: false,
+    tax_rate: 0
+  });
+
+  // Fetch dynamic store settings on mount
+  useEffect(() => {
+    supabase.from('store_settings').select('*').eq('id', 1).single().then(({ data }) => {
+      if (data) {
+        setStoreSettings({
+          shipping_pp_price: data.shipping_pp_price ?? 1.50,
+          shipping_province_price: data.shipping_province_price ?? 2.50,
+          enable_tax: !!data.enable_tax,
+          tax_rate: data.tax_rate ?? 0
+        });
+      }
+    });
+  }, []);
 
   useEffect(() => {
     if (user) {
@@ -64,15 +86,20 @@ export default function Checkout() {
 
   const validInfo = !!(form.name && form.email && form.phone);
   const validShip = !!(form.address && form.province);
-  
-  // Validation updated: Require both ID and Image for QR transfers
   const validPay = form.payment === "cod" || (form.payment === "qr" && form.transactionId.trim() !== "" && form.transactionImage !== null); 
 
+  // --- DYNAMIC CALCULATIONS ---
   const activeShippingFee = form.province 
-    ? (form.province.trim().toLowerCase() === "phnom penh" ? 1.50 : 2.00) 
+    ? (form.province.trim().toLowerCase() === "phnom penh" 
+        ? storeSettings.shipping_pp_price 
+        : storeSettings.shipping_province_price) 
     : 0; 
   
-  const activeTotal = totals.subtotal + activeShippingFee + totals.tax;
+  const activeTaxAmount = storeSettings.enable_tax 
+    ? (totals.subtotal * (storeSettings.tax_rate / 100))
+    : 0;
+
+  const activeTotal = totals.subtotal + activeShippingFee + activeTaxAmount;
 
   const handleCartExpiredAcknowledge = () => {
     setShowCartExpiredModal(false); 
@@ -97,7 +124,6 @@ export default function Checkout() {
       
       let receiptUrl = null;
 
-      // 1. Upload the receipt image to Supabase Storage if QR method is used
       if (form.payment === "qr" && form.transactionImage) {
         const fileExt = form.transactionImage.name.split('.').pop();
         const fileName = `${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`;
@@ -107,18 +133,12 @@ export default function Checkout() {
           .from('receipts')
           .upload(filePath, form.transactionImage);
 
-        if (uploadError) {
-          throw new Error("Failed to upload receipt image. Please try again.");
-        }
+        if (uploadError) throw new Error("Failed to upload receipt image. Please try again.");
 
-        const { data: publicUrlData } = supabase.storage
-          .from('receipts')
-          .getPublicUrl(filePath);
-
+        const { data: publicUrlData } = supabase.storage.from('receipts').getPublicUrl(filePath);
         receiptUrl = publicUrlData.publicUrl;
       }
       
-      // 2. Insert main order using the active (calculated) shipping fees and receipt data
       const { data: orderData, error: orderError } = await supabase
         .from('orders')
         .insert({
@@ -126,11 +146,11 @@ export default function Checkout() {
           status: 'pending',
           subtotal: totals.subtotal,
           shipping_fee: activeShippingFee, 
-          tax: totals.tax,
-          grand_total: activeTotal, 
+          tax: activeTaxAmount, // Use dynamic tax
+          grand_total: activeTotal, // Use dynamic total
           payment_method: form.payment,
           transaction_reference: form.payment === "qr" ? form.transactionId : null,
-          transaction_receipt_url: receiptUrl, // Store the uploaded image URL
+          transaction_receipt_url: receiptUrl,
           shipping_address: {
             name: form.name,
             email: form.email,
@@ -144,7 +164,6 @@ export default function Checkout() {
 
       if (orderError) throw orderError;
 
-      // 3. Map and insert order items
       const orderItems = items.map((/** @type {any} */ i) => ({
         order_id: orderData.id,
         product_id: i.product_id || i.id,
@@ -156,10 +175,7 @@ export default function Checkout() {
         total_price: i.price * i.quantity
       }));
 
-      const { error: itemsError } = await supabase
-        .from('order_items')
-        .insert(orderItems);
-
+      const { error: itemsError } = await supabase.from('order_items').insert(orderItems);
       if (itemsError) throw itemsError;
 
       clearCart();
@@ -223,7 +239,7 @@ export default function Checkout() {
     <div className="bg-background relative">
       <div className="border-b hairline">
         <div className="max-w-[1400px] mx-auto px-4 md:px-8 py-8">
-          <Link to="/" className="font-display text-sm tracking-[-0.04em]">MONOLITHIC ATELIER</Link>
+          <Link to="/" className="font-display text-sm tracking-[-0.04em]">NOIR MTD</Link>
           <h1 className="font-display text-4xl md:text-5xl tracking-[-0.04em] mt-4">Checkout.</h1>
         </div>
       </div>
@@ -373,12 +389,24 @@ export default function Checkout() {
               ))}
             </div>
             <div className="border-t hairline mt-5 pt-5 space-y-2.5">
-              <div className="flex justify-between label-mono text-muted-foreground"><span>Subtotal</span><span className="font-mono text-foreground">${totals.subtotal.toFixed(2)}</span></div>
+              <div className="flex justify-between label-mono text-muted-foreground">
+                <span>Subtotal</span>
+                <span className="font-mono text-foreground">${totals.subtotal.toFixed(2)}</span>
+              </div>
               
-              {/* Shipping Text Logic Updated */}
-              <div className="flex justify-between label-mono text-muted-foreground"><span>Shipping</span><span className="font-mono text-foreground">${activeShippingFee.toFixed(2)}</span></div>
+              <div className="flex justify-between label-mono text-muted-foreground">
+                <span>Shipping</span>
+                <span className="font-mono text-foreground">${activeShippingFee.toFixed(2)}</span>
+              </div>
               
-              <div className="flex justify-between label-mono text-muted-foreground"><span>Tax</span><span className="font-mono text-foreground">${totals.tax.toFixed(2)}</span></div>
+              {/* CONDITIONAL TAX: Only displays if enabled in Web Setup */}
+              {storeSettings.enable_tax && (
+                <div className="flex justify-between label-mono text-muted-foreground">
+                  <span>Tax ({storeSettings.tax_rate}%)</span>
+                  <span className="font-mono text-foreground">${activeTaxAmount.toFixed(2)}</span>
+                </div>
+              )}
+              
               <div className="flex justify-between pt-3 border-t hairline">
                 <span className="font-display uppercase">Total</span>
                 <span className="font-mono text-xl">${activeTotal.toFixed(2)}</span>
@@ -396,18 +424,8 @@ export default function Checkout() {
               Please sign in to your account or create a new one to securely complete your order.
             </p>
             <div className="flex gap-4">
-              <button 
-                onClick={() => setShowAuthModal(false)}
-                className="flex-1 py-3 border hairline label-mono hover:bg-muted/50 transition-colors"
-              >
-                Cancel
-              </button>
-              <button 
-                onClick={() => navigate('/login')}
-                className="flex-1 py-3 bg-foreground text-background label-mono transition-opacity hover:opacity-90"
-              >
-                Sign In
-              </button>
+              <button onClick={() => setShowAuthModal(false)} className="flex-1 py-3 border hairline label-mono hover:bg-muted/50 transition-colors">Cancel</button>
+              <button onClick={() => navigate('/login')} className="flex-1 py-3 bg-foreground text-background label-mono transition-opacity hover:opacity-90">Sign In</button>
             </div>
           </div>
         </div>
@@ -421,12 +439,7 @@ export default function Checkout() {
               Your cart reservation has expired after 10 minutes. Please add the items again.
             </p>
             <div className="flex gap-4">
-              <button 
-                onClick={handleCartExpiredAcknowledge} 
-                className="w-full py-3 bg-foreground text-background label-mono transition-opacity hover:opacity-90"
-              >
-                Return to Shop
-              </button>
+              <button onClick={handleCartExpiredAcknowledge} className="w-full py-3 bg-foreground text-background label-mono transition-opacity hover:opacity-90">Return to Shop</button>
             </div>
           </div>
         </div>

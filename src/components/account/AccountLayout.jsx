@@ -1,7 +1,7 @@
 import React, { useEffect } from "react";
 import { Link, Outlet, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/lib/AuthContext";
-import { User, ShoppingBag, MapPin, LogOut } from "lucide-react";
+import { User, ShoppingBag, MapPin, LogOut, Home } from "lucide-react";
 
 const NAV = [
   { to: "/account", label: "Profile", icon: User, end: true },
@@ -43,18 +43,31 @@ export default function AccountLayout() {
 
       <div className="grid md:grid-cols-[200px_1fr] gap-8 md:gap-12">
         <nav className="flex md:flex-col gap-1 md:border-r hairline md:pr-4 overflow-x-auto md:overflow-visible no-scrollbar">
-          {NAV.map((item) => {
-            const Icon = item.icon;
-            return (
-              <Link key={item.to} to={item.to} end={item.end} className={`flex items-center gap-3 px-3 py-2.5 label-mono text-[10px] whitespace-nowrap ${isActive(item) ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}>
-                <Icon size={15} strokeWidth={1.5} /> {item.label}
-              </Link>
-            );
-          })}
-          {/* 2. Use the global logout function */}
-          <button onClick={() => logout()} className="flex items-center gap-3 px-3 py-2.5 label-mono text-[10px] text-muted-foreground hover:text-foreground text-left whitespace-nowrap">
-            <LogOut size={15} strokeWidth={1.5} /> Sign Out
-          </button>
+          
+          {/* Main Account Links */}
+          <div className="flex md:flex-col gap-1 w-full">
+            {NAV.map((item) => {
+              const Icon = item.icon;
+              return (
+                <Link key={item.to} to={item.to} end={item.end} className={`flex items-center gap-3 px-3 py-2.5 label-mono text-[10px] whitespace-nowrap ${isActive(item) ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}>
+                  <Icon size={15} strokeWidth={1.5} /> {item.label}
+                </Link>
+              );
+            })}
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex md:flex-col gap-1 md:mt-4 md:pt-4 md:border-t hairline w-full">
+            <Link to="/" className="flex items-center gap-3 px-3 py-2.5 label-mono text-[10px] text-muted-foreground hover:text-foreground text-left whitespace-nowrap">
+              <Home size={15} strokeWidth={1.5} /> Return to Home
+            </Link>
+            
+            {/* 2. Use the global logout function */}
+            <button onClick={() => logout()} className="flex items-center gap-3 px-3 py-2.5 label-mono text-[10px] text-muted-foreground hover:text-foreground text-left whitespace-nowrap">
+              <LogOut size={15} strokeWidth={1.5} /> Sign Out
+            </button>
+          </div>
+
         </nav>
 
         <div className="min-w-0">

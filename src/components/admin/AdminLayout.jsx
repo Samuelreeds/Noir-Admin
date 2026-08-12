@@ -14,6 +14,7 @@ export default function AdminLayout() {
   // State for collapsible menus
   const [openMenus, setOpenMenus] = useState({ products: true });
 
+  // 1. Auth & Redirect Logic
   useEffect(() => {
     if (!isLoadingAuth) {
       if (!user) { 
@@ -24,6 +25,27 @@ export default function AdminLayout() {
       }
     }
   }, [user, isLoadingAuth, navigate]);
+
+  // 2. Global Escape Key Listener for "Go Back" Navigation
+  useEffect(() => {
+    const handleKeyDown = (/** @type {KeyboardEvent} */ e) => {
+      if (e.key === 'Escape') {
+        // Safeguard: Do not navigate back if the user is currently typing in an input field
+        const activeTag = document.activeElement?.tagName?.toLowerCase();
+        if (activeTag === 'input' || activeTag === 'textarea' || activeTag === 'select') {
+          return; 
+        }
+        
+        // Go back to the previous page
+        navigate(-1);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    
+    // Cleanup listener on unmount
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [navigate]);
 
   if (isLoadingAuth || !user || user?.role?.trim() !== "admin") return null;
 
@@ -43,7 +65,12 @@ export default function AdminLayout() {
       {/* Sidebar */}
       <aside className="w-64 shrink-0 hidden md:flex flex-col fixed inset-y-0 left-0 bg-white border-r border-slate-200 z-50">
         <div className="h-16 flex items-center px-6 border-b border-slate-200">
-          <Link to="/" className="font-display text-xl tracking-widest font-semibold">BARE</Link>
+          <Link to="/" className="flex items-center gap-2">
+  {/* If you have a logo image in your public folder, use this: */}
+  <img src="/logo.png" alt="NOIR MTD Logo" className="h-8 w-auto object-contain" />
+  {/* If you want the text next to it, keep this. If your logo image already has the text, you can delete this span: */}
+  
+</Link>
         </div>
         
         <nav className="flex-1 overflow-y-auto py-4 custom-scrollbar">

@@ -14,9 +14,6 @@ const SORTS = [
   { value: "name_desc", label: "Name Z-A" },
 ];
 
-const ALL_SIZES = ["XS", "S", "M", "L", "XL", "XXL", "ONE SIZE"];
-const ALL_COLORS = ["Black", "White", "Grey", "Charcoal", "Sand", "Navy"];
-
 export default function Shop() {
   const [params, setParams] = useSearchParams();
   const [all, setAll] = useState(/** @type {any[]} */ ([]));
@@ -38,26 +35,59 @@ export default function Shop() {
   };
   const sort = params.get("sort") || "newest";
 
+  // Dynamic filter states
   const [categories, setCategories] = useState(/** @type {any[]} */ ([]));
   const [brands, setBrands] = useState(/** @type {any[]} */ ([]));
+  const [colors, setColors] = useState(/** @type {any[]} */ ([]));
+  const [sizes, setSizes] = useState(/** @type {any[]} */ ([]));
+  const [genders, setGenders] = useState(/** @type {string[]} */ ([]));
 
   useEffect(() => {
-    (async () => {
+    const loadData = async () => {
       try {
-        const [prodRes, catRes, brandRes] = await Promise.all([
-          supabase.from("products").select("*").neq("status", "archived").order("created_at", { ascending: false }).limit(200),
-          supabase.from("categories").select("*").order("created_at", { ascending: false }).limit(50),
-          supabase.from("brands").select("*").order("created_at", { ascending: false }).limit(50),
+        // Safe fetch helper prevents the page from crashing if a table hasn't been created yet
+        const fetchSafe = async (/** @type {string} */ table) => {
+          try {
+            const { data, error } = await supabase.from(table).select("*").order("created_at", { ascending: false }).limit(50);
+            if (error) return [];
+            return data || [];
+          } catch (err) {
+            return [];
+          }
+        };
+
+        const { data: prodData } = await supabase
+          .from("products")
+          .select("*")
+          .neq("status", "archived")
+          .order("created_at", { ascending: false })
+          .limit(200);
+
+        if (prodData) {
+          setAll(prodData);
+          // Extract unique genders dynamically from the products the admin created
+          const uniqueGenders = [...new Set(prodData.map((/** @type {any} */ p) => p.gender).filter(Boolean))];
+          setGenders(/** @type {string[]} */ (uniqueGenders));
+        }
+
+        const [catData, brandData, colorData, sizeData] = await Promise.all([
+          fetchSafe("categories"),
+          fetchSafe("brands"),
+          fetchSafe("colors"),
+          fetchSafe("sizes")
         ]);
 
-        if (prodRes.data) setAll(prodRes.data);
-        if (catRes.data) setCategories(catRes.data);
-        if (brandRes.data) setBrands(brandRes.data);
+        setCategories(catData);
+        setBrands(brandData);
+        setColors(colorData);
+        setSizes(sizeData);
       } catch (e) {
-        console.error(e);
+        console.error("Error loading shop data:", e);
       }
       setLoading(false);
-    })();
+    };
+
+    loadData();
   }, []);
 
   const toggleMulti = useCallback((/** @type {string} */ key, /** @type {string} */ value) => {
@@ -138,39 +168,59 @@ export default function Shop() {
 
   const FilterPanel = () => (
     <div>
-      <FilterSection title="Gender">
-        {["men", "women", "unisex"].map((/** @type {string} */ g) => (
-          <CheckRow key={g} active={filters.gender.includes(g)} onClick={() => toggleMulti("gender", g)} label={g.charAt(0).toUpperCase() + g.slice(1)} />
-        ))}
-      </FilterSection>
-      <FilterSection title="Category">
-        {categories.map((/** @type {any} */ c) => (
-          <CheckRow key={c.id} active={filters.category.includes(c.id) || filters.category.includes(c.name)} onClick={() => toggleMulti("category", c.name)} label={c.name} />
-        ))}
-        {categories.length === 0 && ["Outerwear", "Shirting", "Trousers", "Knitwear"].map((/** @type {string} */ c) => (
-          <CheckRow key={c} active={filters.category.includes(c)} onClick={() => toggleMulti("category", c)} label={c} />
-        ))}
-      </FilterSection>
-      <FilterSection title="Brand">
-        {brands.map((/** @type {any} */ b) => (
-          <CheckRow key={b.id} active={filters.brand.includes(b.id)} onClick={() => toggleMulti("brand", b.id)} label={b.name} />
-        ))}
-        {brands.length === 0 && <p className="text-xs text-muted-foreground">No brands.</p>}
-      </FilterSection>
-      <FilterSection title="Color">
-        <div className="flex flex-wrap gap-2">
-          {ALL_COLORS.map((/** @type {string} */ c) => (
-            <button key={c} onClick={() => toggleMulti("color", c)} className={`px-3 py-1.5 border hairline label-mono text-[10px] ${filters.color.includes(c) ? "bg-foreground text-background" : ""}`}>{c}</button>
+      {/* Dynamic Gender Filters */}
+      {genders.length > 0 && (
+        <FilterSection title="Gender">
+          {genders.map((/** @type {string} */ g) => (
+            <CheckRow key={g} active={filters.gender.includes(g)} onClick={() => toggleMulti("gender", g)} label={g.charAt(0).toUpperCase() + g.slice(1)} />
           ))}
-        </div>
-      </FilterSection>
-      <FilterSection title="Size">
-        <div className="flex flex-wrap gap-2">
-          {ALL_SIZES.map((/** @type {string} */ s) => (
-            <button key={s} onClick={() => toggleMulti("size", s)} className={`px-3 py-1.5 border hairline label-mono text-[10px] ${filters.size.includes(s) ? "bg-foreground text-background" : ""}`}>{s}</button>
+        </FilterSection>
+      )}
+
+      {/* Dynamic Category Filters */}
+      {categories.length > 0 && (
+        <FilterSection title="Category">
+          {categories.map((/** @type {any} */ c) => (
+            <CheckRow key={c.id} active={filters.category.includes(c.id) || filters.category.includes(c.name)} onClick={() => toggleMulti("category", c.name)} label={c.name} />
           ))}
-        </div>
-      </FilterSection>
+        </FilterSection>
+      )}
+
+      {/* Dynamic Brand Filters */}
+      {brands.length > 0 && (
+        <FilterSection title="Brand">
+          {brands.map((/** @type {any} */ b) => (
+            <CheckRow key={b.id} active={filters.brand.includes(b.id)} onClick={() => toggleMulti("brand", b.id)} label={b.name} />
+          ))}
+        </FilterSection>
+      )}
+
+      {/* Dynamic Color Filters */}
+      {colors.length > 0 && (
+        <FilterSection title="Color">
+          <div className="flex flex-wrap gap-2">
+            {colors.map((/** @type {any} */ c) => (
+              <button key={c.id || c.name} onClick={() => toggleMulti("color", c.name)} className={`px-3 py-1.5 border hairline label-mono text-[10px] ${filters.color.includes(c.name) ? "bg-foreground text-background" : ""}`}>
+                {c.name}
+              </button>
+            ))}
+          </div>
+        </FilterSection>
+      )}
+
+      {/* Dynamic Size Filters */}
+      {sizes.length > 0 && (
+        <FilterSection title="Size">
+          <div className="flex flex-wrap gap-2">
+            {sizes.map((/** @type {any} */ s) => (
+              <button key={s.id || s.name} onClick={() => toggleMulti("size", s.name)} className={`px-3 py-1.5 border hairline label-mono text-[10px] ${filters.size.includes(s.name) ? "bg-foreground text-background" : ""}`}>
+                {s.name}
+              </button>
+            ))}
+          </div>
+        </FilterSection>
+      )}
+
       <FilterSection title="Price Range">
         <div className="flex items-center gap-2">
           <input type="number" placeholder="Min" defaultValue={filters.minPrice ?? ""} onBlur={(e) => setSingle("minPrice", e.target.value)} className="w-full border hairline px-3 py-2 font-mono text-xs outline-none" />
@@ -178,9 +228,11 @@ export default function Shop() {
           <input type="number" placeholder="Max" defaultValue={filters.maxPrice ?? ""} onBlur={(e) => setSingle("maxPrice", e.target.value)} className="w-full border hairline px-3 py-2 font-mono text-xs outline-none" />
         </div>
       </FilterSection>
+      
       <FilterSection title="Offers">
         <CheckRow active={filters.discount} onClick={() => setSingle("discount", filters.discount ? "" : "1")} label="On Sale Only" />
       </FilterSection>
+      
       {activeCount > 0 && (
         <button onClick={clearAll} className="label-mono text-muted-foreground hover:text-foreground mt-4 underline underline-offset-4">Clear all filters</button>
       )}

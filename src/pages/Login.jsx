@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
@@ -13,6 +14,10 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // 1. Detect if we are on the admin subdomain
+  const hostname = window.location.hostname;
+  const isAdminDomain = hostname.startsWith('admin.') || hostname === 'admin.localhost';
 
   const handleSubmit = async (/** @type {React.FormEvent} */ e) => {
     e.preventDefault();
@@ -50,33 +55,42 @@ export default function Login() {
     <AuthLayout
       icon={LogIn}
       title="Welcome back"
-      subtitle="Log in to your account"
+      subtitle={isAdminDomain ? "Admin Portal Login" : "Log in to your account"}
+      hideBackLink={isAdminDomain} // 2. Pass this prop to hide the back button
       footer={
-        <>
-          Don't have an account?{" "}
-          <Link to="/register" className="text-primary font-medium hover:underline">
-            Create one
-          </Link>
-        </>
+        /* 3. Hide the registration link if on the admin domain */
+        !isAdminDomain ? (
+          <>
+            Don't have an account?{" "}
+            <Link to="/register" className="text-primary font-medium hover:underline">
+              Create one
+            </Link>
+          </>
+        ) : null
       }
     >
-      <Button
-        variant="outline"
-        className="w-full h-12 text-sm font-medium mb-6"
-        onClick={handleGoogle}
-      >
-        <GoogleIcon className="w-5 h-5 mr-2" />
-        Continue with Google
-      </Button>
+      {/* 4. Hide Google Auth and Divider if on the admin domain */}
+      {!isAdminDomain && (
+        <>
+          <Button
+            variant="outline"
+            className="w-full h-12 text-sm font-medium mb-6"
+            onClick={handleGoogle}
+          >
+            <GoogleIcon className="w-5 h-5 mr-2" />
+            Continue with Google
+          </Button>
 
-      <div className="relative mb-6">
-        <div className="absolute inset-0 flex items-center">
-          <div className="w-full border-t border-border" />
-        </div>
-        <div className="relative flex justify-center text-xs uppercase">
-          <span className="bg-card px-3 text-muted-foreground">or</span>
-        </div>
-      </div>
+          <div className="relative mb-6">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-border" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-card px-3 text-muted-foreground">or</span>
+            </div>
+          </div>
+        </>
+      )}
 
       {error && (
         <div className="mb-4 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">

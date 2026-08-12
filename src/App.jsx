@@ -36,6 +36,7 @@ import AdminAdvertisement from '@/pages/admin/Advertisement';
 import AdminColors from '@/pages/admin/Colors';
 import AdminSizes from '@/pages/admin/Sizes';
 import AdminInventory from '@/pages/admin/Inventory';
+import AdminWebSetup from '@/pages/admin/WebSetup';
 
 // Auth Imports
 import Login from '@/pages/Login';
@@ -88,6 +89,7 @@ const AuthenticatedApp = () => {
           <Route path="/payments" element={<AdminPaymentHistory />} />
           <Route path="/" element={<AdminDashboard />} />
           <Route path="/orders" element={<AdminOrders />} />
+          <Route path="/web-setup" element={<AdminWebSetup />} />
           {/* We will add the rest of the routes here as we build them */}
         </Route>
         <Route path="*" element={<PageNotFound />} />

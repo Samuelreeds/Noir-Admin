@@ -8,11 +8,15 @@ const KHR_RATE = 4100; // Standard exchange rate for display purposes
 
 export default function PaymentHistory() {
   const [searchQuery, setSearchQuery] = useState('');
-  const [dateFilter, setDateFilter] = useState('');
+  
+  // 1. Replaced single date filter with date range state
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  
   const [currencyFilter, setCurrencyFilter] = useState('All Currency');
   const [currentPage, setCurrentPage] = useState(1);
 
-  // 1. Fetch live orders with caching
+  // Fetch live orders with caching
   const { data: orders = [], isLoading, refetch, isFetching } = useQuery({
     queryKey: ['admin-payments'],
     queryFn: async () => {
@@ -30,41 +34,63 @@ export default function PaymentHistory() {
     staleTime: 5 * 60 * 1000,
   });
 
-  // Reset pagination on search
-  useEffect(() => { setCurrentPage(1); }, [searchQuery, dateFilter]);
+  // Reset pagination on search or filter changes
+  useEffect(() => { setCurrentPage(1); }, [searchQuery, startDate, endDate, currencyFilter]);
 
-  // 2. Calculate Summary Metrics (Top Cards)
+  // Calculate Summary Metrics (Top Cards)
   const totalOrders = orders.length;
   const totalRevenueUSD = orders.reduce((sum, o) => sum + (o.grand_total || 0), 0);
   const totalRevenueKHR = totalRevenueUSD * KHR_RATE;
   const totalShippingUSD = orders.reduce((sum, o) => sum + (o.shipping_fee || 0), 0);
   const totalShippingKHR = totalShippingUSD * KHR_RATE;
 
-  // 3. Filter Logic
+  // 2. Updated Filter Logic with Date Range
   const filteredOrders = orders.filter((/** @type {any} */ order) => {
+    // Search Query Filter
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       const addr = order.shipping_address || {};
       const searchString = `${order.id} ${addr.name || ''} ${addr.phone || ''}`.toLowerCase();
       if (!searchString.includes(q)) return false;
     }
-    if (dateFilter) {
-      const orderDate = new Date(order.created_at).toISOString().split('T')[0];
-      if (orderDate !== dateFilter) return false;
-    }
+    
+    // Date Range Filter (Using ISO string comparison)
+    const orderDate = new Date(order.created_at).toISOString().split('T')[0];
+    if (startDate && orderDate < startDate) return false;
+    if (endDate && orderDate > endDate) return false;
+    
     return true;
   });
 
-  // 4. Pagination
+  // Pagination
   const totalPages = Math.ceil(filteredOrders.length / ITEMS_PER_PAGE) || 1;
   const paginatedOrders = filteredOrders.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
-  // 5. Export to Excel
+  // Formatting helper to apply the Currency Filter to the UI
+  const formatPrice = (/** @type {number} */ usdAmount) => {
+    if (currencyFilter === 'KHR') return `${(usdAmount * KHR_RATE).toLocaleString()} ៛`;
+    return `$${usdAmount.toFixed(2)}`; // Defaults to USD for "All Currency" or "USD"
+  };
+
+  // 3. Export to Excel (Refined for Date Range and active Currency)
   const exportToCSV = () => {
     if (filteredOrders.length === 0) return alert("No data to export!");
-    const headers = ['Order ID', 'Date', 'Customer Name', 'Shipping To', 'Total Items', 'Payment Option', 'Status', 'Price', 'Shipping Fee'];
+    
+    const isKHR = currencyFilter === 'KHR';
+    const currencyLabel = isKHR ? 'KHR' : 'USD';
+    
+    const headers = [
+      'Order ID', 'Date', 'Customer Name', 'Shipping To', 
+      'Total Items', 'Payment Option', 'Status', 
+      `Price (${currencyLabel})`, `Shipping Fee (${currencyLabel})`
+    ];
+    
     const rows = filteredOrders.map((/** @type {any} */ o) => {
       const addr = o.shipping_address || {};
+      
+      const priceOutput = isKHR ? (o.grand_total * KHR_RATE) : o.grand_total;
+      const shippingOutput = isKHR ? (o.shipping_fee * KHR_RATE) : o.shipping_fee;
+
       return [
         `MA-${o.id.slice(-8).toUpperCase()}`,
         new Date(o.created_at).toLocaleDateString(),
@@ -73,14 +99,22 @@ export default function PaymentHistory() {
         o.order_items?.length || 0,
         o.payment_method === 'qr' ? 'ABA PAYWAY' : o.payment_method,
         o.status,
-        o.grand_total || 0,
-        o.shipping_fee || 0
+        priceOutput || 0,
+        shippingOutput || 0
       ].map(field => `"${String(field).replace(/"/g, '""')}"`).join(',');
     });
+
     const blob = new Blob([[headers.join(','), ...rows].join('\n')], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.setAttribute('download', `payment_history_${new Date().toISOString().split('T')[0]}.csv`);
+    
+    // Dynamic filename based on date range
+    let dateStr = new Date().toISOString().split('T')[0];
+    if (startDate && endDate) dateStr = `${startDate}_to_${endDate}`;
+    else if (startDate) dateStr = `from_${startDate}`;
+    else if (endDate) dateStr = `until_${endDate}`;
+
+    link.setAttribute('download', `payment_history_${dateStr}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -138,10 +172,20 @@ export default function PaymentHistory() {
         {/* Toolbar */}
         <div className="p-4 border-b border-slate-200 flex flex-wrap gap-4 items-center justify-between bg-slate-50/50 shrink-0">
           <div className="flex items-center gap-3">
-            <div className="relative">
-              <Calendar size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input type="date" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} className="border border-slate-300 rounded pl-9 pr-3 py-2 text-sm bg-white outline-none cursor-pointer" />
+            
+            {/* Start Date / End Date Range Inputs */}
+            <div className="flex items-center gap-2">
+              <div className="relative">
+                <Calendar size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="border border-slate-300 rounded pl-9 pr-3 py-2 text-sm bg-white outline-none cursor-pointer" />
+              </div>
+              <span className="text-slate-400 text-sm">to</span>
+              <div className="relative">
+                <Calendar size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="border border-slate-300 rounded pl-9 pr-3 py-2 text-sm bg-white outline-none cursor-pointer" />
+              </div>
             </div>
+
             <select value={currencyFilter} onChange={(e) => setCurrencyFilter(e.target.value)} className="border border-slate-300 rounded px-3 py-2 text-sm bg-white outline-none cursor-pointer">
               <option>All Currency</option>
               <option>USD</option>
@@ -206,8 +250,10 @@ export default function PaymentHistory() {
                           {order.status === 'pending' ? 'Paid' : 'Delivered'}
                         </span>
                       </td>
-                      <td className="px-4 py-4 text-right font-medium text-slate-900">${order.grand_total?.toFixed(2)}</td>
-                      <td className="px-4 py-4 text-right text-slate-600">${order.shipping_fee?.toFixed(2)}</td>
+                      
+                      {/* Price cells updated to use dynamic formatPrice helper */}
+                      <td className="px-4 py-4 text-right font-medium text-slate-900">{formatPrice(order.grand_total || 0)}</td>
+                      <td className="px-4 py-4 text-right text-slate-600">{formatPrice(order.shipping_fee || 0)}</td>
                     </tr>
                   );
                 })

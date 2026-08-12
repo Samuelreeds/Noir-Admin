@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Search, ShoppingBag, Heart, User, Menu, X, Shield } from "lucide-react";
+import { Search, ShoppingBag, Heart, User, Menu, X } from "lucide-react";
 import { useCart } from "@/lib/cart-context";
 import { useAuth } from "@/lib/AuthContext";
 
@@ -17,9 +17,6 @@ export default function Navbar({ onOpenSearch }) {
   const { user } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
   const navigate = useNavigate();
-
-  // Check if the current user is an admin
-  const isAdmin = user?.role === 'admin';
 
   return (
     <>
@@ -47,14 +44,16 @@ export default function Navbar({ onOpenSearch }) {
             </nav>
           </div>
 
-          {/* center — wordmark */}
-          <Link to="/" className="flex flex-col items-center justify-center leading-none">
-            <span className="font-display text-[15px] md:text-[18px] font-semibold tracking-[-0.04em]">
-              MONOLITHIC
-            </span>
-            <span className="label-mono text-[8px] md:text-[9px] text-foreground/60 mt-0.5">
-              ATELIER
-            </span>
+          {/* center — NOIR MTD Logo (Image Only) */}
+          <Link 
+            to="/" 
+            className="flex items-center justify-center leading-none hover:opacity-80 transition-opacity"
+          >
+            <img 
+              src="/logo.png" 
+              alt="NOIR MTD Logo" 
+              className="h-6 md:h-8 w-auto object-contain" 
+            />
           </Link>
 
           {/* right — actions */}
@@ -73,13 +72,6 @@ export default function Navbar({ onOpenSearch }) {
             <button onClick={onOpenSearch} aria-label="Search" className="hover:opacity-60 transition-opacity">
               <Search size={18} strokeWidth={1.5} />
             </button>
-            
-            {/* Admin Link (Only visible to admins) */}
-            {isAdmin && (
-              <Link to="/admin" aria-label="Admin Dashboard" className="hover:opacity-60 transition-opacity hidden sm:block text-emerald-600">
-                <Shield size={18} strokeWidth={1.5} />
-              </Link>
-            )}
 
             <Link to="/account" aria-label="Account" className="hover:opacity-60 transition-opacity hidden sm:block">
               <User size={18} strokeWidth={1.5} />
@@ -110,7 +102,10 @@ export default function Navbar({ onOpenSearch }) {
           <div className="absolute inset-0 bg-black/40" onClick={() => setMobileOpen(false)} />
           <div className="absolute left-0 top-0 bottom-0 w-[78%] max-w-xs bg-background p-6 flex flex-col inertia-up">
             <div className="flex items-center justify-between mb-10">
-              <span className="font-display text-sm font-semibold">MONOLITHIC</span>
+              {/* Mobile Menu Logo (Image Only) */}
+              <div className="flex items-center">
+                <img src="/logo.png" alt="NOIR MTD Logo" className="h-6 w-auto object-contain" />
+              </div>
               <button onClick={() => setMobileOpen(false)} aria-label="Close menu"><X size={20} strokeWidth={1.5} /></button>
             </div>
             <nav className="flex flex-col gap-1">
@@ -130,12 +125,6 @@ export default function Navbar({ onOpenSearch }) {
                 <Link to="/wishlist" onClick={() => setMobileOpen(false)} className="flex items-center gap-2 label-mono"><Heart size={16} /> Wishlist</Link>
                 <Link to="/account" onClick={() => setMobileOpen(false)} className="flex items-center gap-2 label-mono"><User size={16} /> Account</Link>
               </div>
-              {/* Mobile Admin Link */}
-              {isAdmin && (
-                <Link to="/admin" onClick={() => setMobileOpen(false)} className="flex items-center gap-2 label-mono text-emerald-600">
-                  <Shield size={16} /> Dashboard
-                </Link>
-              )}
             </div>
           </div>
         </div>
