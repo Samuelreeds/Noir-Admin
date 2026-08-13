@@ -19,16 +19,15 @@ const CATEGORY_TILES = [
   { label: "Skincare", path: "/shop?category=Skincare", img: "https://images.unsplash.com/photo-1556228578-0d85b1a4d571?q=80&w=800&auto=format&fit=crop" },
 ];
 
-// Fallback images for the slider if the admin hasn't uploaded any
+// Fallback images if NO sliders are active in the database
 const FALLBACK_SLIDER_IMAGES = [
-  "https://images.unsplash.com/photo-1596462502278-27bf85033e5a?q=80&w=2071&auto=format&fit=crop",
-  "https://images.unsplash.com/photo-1620916566398-39f1143ab7be?q=80&w=2000&auto=format&fit=crop",
-  "https://images.unsplash.com/photo-1512496015851-a1dc8a47781b?q=80&w=2000&auto=format&fit=crop"
+  { image_url: "https://images.unsplash.com/photo-1596462502278-27bf85033e5a?q=80&w=2071&auto=format&fit=crop" }
 ];
 
 export default function Home() {
   const [products, setProducts] = useState(/** @type {any[]} */ ([]));
   const [settings, setSettings] = useState(/** @type {any} */ (null));
+  const [sliders, setSliders] = useState(/** @type {any[]} */ ([]));
   const [loading, setLoading] = useState(true);
   const rackRef = useRef(/** @type {any} */ (null));
   
@@ -38,13 +37,15 @@ export default function Home() {
   useEffect(() => {
     (async () => {
       try {
-        const [prodRes, settingsRes] = await Promise.all([
+        const [prodRes, settingsRes, slidersRes] = await Promise.all([
           supabase.from("products").select("*").neq("status", "archived").order("created_at", { ascending: false }).limit(60),
-          supabase.from("store_settings").select("*").eq("id", 1).single()
+          supabase.from("store_settings").select("*").eq("id", 1).single(),
+          supabase.from("sliders").select("*").eq("status", true).order("ordering", { ascending: true })
         ]);
 
         if (prodRes.data) setProducts(prodRes.data);
         if (settingsRes.data) setSettings(settingsRes.data);
+        if (slidersRes.data) setSliders(slidersRes.data);
 
       } catch (e) {
         console.error("Error loading home data:", e);
@@ -57,29 +58,29 @@ export default function Home() {
   const newArrivals = products.filter((/** @type {any} */ p) => p.is_new).slice(0, 6);
   const bestSellers = products.filter((/** @type {any} */ p) => p.is_best_seller).slice(0, 6);
 
-  // Safely fallback to admin settings
-  const heroHeading = settings?.hero_heading || "WELCOME TO\nNOIR MTD";
-  const heroSubheading = settings?.hero_subheading || "Discover our latest collection.";
-  const heroBtnText = settings?.hero_button_text || "Shop Now";
-  const heroBtnLink = settings?.hero_button_link || "/shop";
-  
-  // Pull the 3 slider images from the database, filtering out empty ones
-  const dbImages = [
-    settings?.hero_image_1,
-    settings?.hero_image_2,
-    settings?.hero_image_3
-  ].filter(Boolean);
+  // Safely fallback to admin settings or default text
+  const heroHeading = settings?.hero_heading || "BEAUTY BEGINS HERE — DISCOVER, CREATE, GLOW";
+  const heroSubheading = settings?.hero_subheading || "HIGH QUALITY, SUITABLE PRICE, UNIQUE.";
 
-  // If the admin uploaded images, use them. Otherwise, use the fallback defaults.
-  const sliderImages = dbImages.length > 0 ? dbImages : FALLBACK_SLIDER_IMAGES;
+  // Use database sliders if available, otherwise use fallback
+  const activeSliders = sliders.length > 0 ? sliders : FALLBACK_SLIDER_IMAGES;
+  
+  // Get CTA settings based on the currently active slide
+  const currentSliderData = activeSliders[currentSlide] || {};
+  const heroBtnText = currentSliderData.cta_text_en || settings?.hero_button_text || "SHOP NOW";
+  const heroBtnLink = currentSliderData.cta_link || settings?.hero_button_link || "/shop";
+  const ctaEnabled = currentSliderData.cta_enabled !== false;
 
   // Auto-advance slider
   useEffect(() => {
+    if (activeSliders.length <= 1) return;
+    
     const timer = setInterval(() => {
-      setCurrentSlide((prev) => (prev + 1) % sliderImages.length);
-    }, 5000); // Changes image every 5 seconds
+      setCurrentSlide((prev) => (prev + 1) % activeSliders.length);
+    }, 5000);
+    
     return () => clearInterval(timer);
-  }, [sliderImages.length]);
+  }, [activeSliders.length]);
 
   const scrollRack = (/** @type {number} */ dir) => {
     const el = rackRef.current;
@@ -89,61 +90,52 @@ export default function Home() {
 
   return (
     <div className="bg-background">
-      {/* HERO — Dynamic via Admin Web Setup */}
-      <section className="grid md:grid-cols-[42%_58%] min-h-[92vh] border-b hairline">
-        <div className="flex flex-col justify-center p-6 md:p-10 lg:p-14 order-2 md:order-1 border-t md:border-t-0 md:border-r hairline relative bg-white z-20">
-          
-          <div className="py-10 md:py-0">
-            <h1 className="font-display text-[12vw] md:text-[6vw] leading-[0.88] tracking-[-0.05em] inertia-up whitespace-pre-line uppercase">
-              {heroHeading}
-            </h1>
-            <p className="text-muted-foreground mt-6 max-w-sm text-balance">
-              {heroSubheading}
-            </p>
-          </div>
-          
-          <div className="absolute bottom-6 md:bottom-10 lg:bottom-14 left-6 md:left-10 lg:left-14 flex items-center gap-4">
-            <Link to={heroBtnLink} className="group flex items-center gap-2 label-mono border-b border-foreground pb-1 hover:gap-3 transition-all uppercase text-xs font-semibold">
-              {heroBtnText} <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
-            </Link>
-            <Link to="/about" className="label-mono text-muted-foreground hover:text-foreground transition-colors pb-1 uppercase text-xs ml-4">
-              The Philosophy
-            </Link>
-          </div>
-        </div>
-
-        {/* IMAGE SLIDER */}
-        <div className="relative overflow-hidden order-1 md:order-2 min-h-[50vh] md:min-h-0 bg-slate-100">
-          {sliderImages.map((img, idx) => (
+      {/* HERO — Stacked Full-Width Banner Slider & Centered Content */}
+      <section className="flex flex-col border-b hairline">
+        {/* Full-width Image Slider Container */}
+        <div className="relative w-full h-[50vh] md:h-[65vh] overflow-hidden bg-slate-100">
+          {activeSliders.map((slide, idx) => (
             <div 
-              key={idx}
+              key={slide.id || idx}
               className={`absolute inset-0 w-full h-full transition-opacity duration-1000 ease-in-out ${idx === currentSlide ? 'opacity-100 z-10' : 'opacity-0 z-0'}`}
             >
-              <Image src={img} alt={`Hero Slider Image ${idx + 1}`} className="w-full h-full object-cover ken-burns" fittingType="cover" />
+              <Image src={slide.image_url} alt={`Hero Slider Image ${idx + 1}`} className="w-full h-full object-cover ken-burns" fittingType="cover" />
             </div>
           ))}
           
-          <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent pointer-events-none z-20" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/10 to-transparent pointer-events-none z-20" />
           
           {/* Slider Indicators */}
-          {sliderImages.length > 1 && (
-            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-2 z-30">
-               {sliderImages.map((_, idx) => (
+          {activeSliders.length > 1 && (
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2 z-30">
+               {activeSliders.map((_, idx) => (
                  <button 
                    key={idx} 
                    onClick={() => setCurrentSlide(idx)}
-                   className={`h-1.5 rounded-full transition-all duration-300 ${idx === currentSlide ? 'bg-white w-8' : 'bg-white/50 w-2 hover:bg-white/80'}`}
+                   className={`h-1.5 rounded-full transition-all duration-300 ${idx === currentSlide ? 'bg-black w-8' : 'bg-black/30 w-2 hover:bg-black/50'}`}
                    aria-label={`Go to slide ${idx + 1}`}
                  />
                ))}
             </div>
           )}
+        </div>
 
-          <div className="absolute bottom-6 right-6 hidden md:block z-30">
-            <Link to={heroBtnLink} className="glass-dark text-white w-24 h-24 rounded-full flex flex-col items-center justify-center label-mono text-center hover:scale-105 transition-transform duration-500 uppercase text-xs tracking-wider">
-              Shop<br/>Now
-            </Link>
-          </div>
+        {/* Centered Content Below Banner */}
+        <div className="flex flex-col items-center justify-center text-center py-12 md:py-16 px-6 bg-background">
+          <h1 className="font-display text-2xl md:text-4xl tracking-[-0.03em] uppercase max-w-4xl text-balance">
+            {heroHeading}
+          </h1>
+          <p className="text-muted-foreground mt-3 text-xs md:text-sm tracking-wider uppercase">
+            {heroSubheading}
+          </p>
+          
+          {ctaEnabled && (
+            <div className="mt-8">
+              <Link to={heroBtnLink} className="inline-block bg-black text-white px-8 py-3.5 label-mono text-xs uppercase tracking-widest hover:bg-slate-800 transition-colors">
+                {heroBtnText}
+              </Link>
+            </div>
+          )}
         </div>
       </section>
 

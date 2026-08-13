@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Link, Outlet, useNavigate, useLocation } from "react-router-dom";
+import { Link, Outlet, useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/lib/AuthContext";
 import { 
   LayoutDashboard, ShoppingCart, CreditCard, Users, 
@@ -9,10 +9,11 @@ import {
 export default function AdminLayout() {
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
   const { user, isLoadingAuth, logout } = useAuth();
   
-  // State for collapsible menus
-  const [openMenus, setOpenMenus] = useState({ products: true });
+  // State for collapsible menus (Default Web Setting & General Setup to open)
+  const [openMenus, setOpenMenus] = useState({ products: false, webSetting: true, generalSetup: true });
 
   // 1. Auth & Redirect Logic
   useEffect(() => {
@@ -20,7 +21,6 @@ export default function AdminLayout() {
       if (!user) { 
         navigate("/login", { replace: true }); 
       } else if (user?.role?.trim() !== "admin") { 
-        // Note: In production, redirect to main storefront domain here
         window.location.href = "http://localhost:5173"; 
       }
     }
@@ -30,20 +30,12 @@ export default function AdminLayout() {
   useEffect(() => {
     const handleKeyDown = (/** @type {KeyboardEvent} */ e) => {
       if (e.key === 'Escape') {
-        // Safeguard: Do not navigate back if the user is currently typing in an input field
         const activeTag = document.activeElement?.tagName?.toLowerCase();
-        if (activeTag === 'input' || activeTag === 'textarea' || activeTag === 'select') {
-          return; 
-        }
-        
-        // Go back to the previous page
+        if (activeTag === 'input' || activeTag === 'textarea' || activeTag === 'select') return; 
         navigate(-1);
       }
     };
-
     window.addEventListener('keydown', handleKeyDown);
-    
-    // Cleanup listener on unmount
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [navigate]);
 
@@ -60,17 +52,20 @@ export default function AdminLayout() {
     }`;
   };
 
+  // Helper for the new nested Query Param links
+  const currentTab = searchParams.get('tab') || '';
+  const subItemClass = (/** @type {string} */ tabName) => `block px-12 py-2.5 text-sm transition-colors ${
+    currentTab === tabName ? "text-slate-900 font-semibold" : "text-slate-500 hover:text-slate-900"
+  }`;
+
   return (
     <div className="min-h-screen bg-[#F8F9FA] flex font-sans">
       {/* Sidebar */}
       <aside className="w-64 shrink-0 hidden md:flex flex-col fixed inset-y-0 left-0 bg-white border-r border-slate-200 z-50">
         <div className="h-16 flex items-center px-6 border-b border-slate-200">
           <Link to="/" className="flex items-center gap-2">
-  {/* If you have a logo image in your public folder, use this: */}
-  <img src="/logo.png" alt="NOIR MTD Logo" className="h-8 w-auto object-contain" />
-  {/* If you want the text next to it, keep this. If your logo image already has the text, you can delete this span: */}
-  
-</Link>
+            <img src="/logo.png" alt="NOIR MTD Logo" className="h-8 w-auto object-contain" />
+          </Link>
         </div>
         
         <nav className="flex-1 overflow-y-auto py-4 custom-scrollbar">
@@ -94,17 +89,48 @@ export default function AdminLayout() {
               {openMenus.products ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
             </button>
             {openMenus.products && (
-              <div className="bg-slate-50 py-1">
+              <div className="bg-slate-50 py-1 border-y border-slate-100">
                 {["Product", "Category", "Product Type", "Advertisement", "Color", "Size", "Inventory"].map(sub => (
-                  <Link key={sub} to={`/products/${sub.toLowerCase().replace(' ', '-')}`} className="block px-12 py-2 text-sm text-slate-600 hover:text-slate-900">— {sub}</Link>
+                  <Link key={sub} to={`/products/${sub.toLowerCase().replace(' ', '-')}`} className="block px-12 py-2.5 text-sm text-slate-500 hover:text-slate-900">— {sub}</Link>
                 ))}
               </div>
             )}
           </div>
 
-          <Link to="/web-setup" className={navItemClass("/web-setup")}>
-            <Settings size={18} /> Web Setup
-          </Link>
+          {/* NEW: Collapsible Web Setting */}
+          <div>
+            <button onClick={() => toggleMenu('webSetting')} className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-slate-600 hover:bg-slate-50">
+              <div className="flex items-center gap-3"><Settings size={18} /> Web Setting</div>
+              {openMenus.webSetting ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+            </button>
+            {openMenus.webSetting && (
+              <div className="bg-slate-50 py-1 border-y border-slate-100">
+                <Link to="/web-setup?tab=about" className={subItemClass('about')}>— About Section</Link>
+                <Link to="/web-setup?tab=contact" className={subItemClass('contact')}>— Footer & Contact</Link>
+                <Link to="/web-setup?tab=filters" className={subItemClass('filters')}>— Store Filters</Link>
+                <Link to="/web-setup?tab=shipping" className={subItemClass('shipping')}>— Shipping & Tax</Link>
+              </div>
+            )}
+          </div>
+
+          {/* NEW: Collapsible General Setup */}
+          <div>
+            <button onClick={() => toggleMenu('generalSetup')} className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-slate-600 hover:bg-slate-50">
+              <div className="flex items-center gap-3"><Settings size={18} /> General Setup</div>
+              {openMenus.generalSetup ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+            </button>
+            {openMenus.generalSetup && (
+              <div className="bg-slate-50 py-1 border-y border-slate-100">
+                <Link to="/web-setup?tab=slider" className={subItemClass('slider')}>— Slider</Link>
+                <Link to="/web-setup?tab=popup" className={subItemClass('popup')}>— Popup</Link>
+                <Link to="/web-setup?tab=feature" className={subItemClass('feature')}>— Feature</Link>
+                <Link to="/web-setup?tab=feedback" className={subItemClass('feedback')}>— Customer Feedback</Link>
+                <Link to="/web-setup?tab=ratings" className={subItemClass('ratings')}>— Product Ratings</Link>
+                <Link to="/web-setup?tab=faqs" className={subItemClass('faqs')}>— FAQs</Link>
+              </div>
+            )}
+          </div>
+
         </nav>
       </aside>
 
@@ -114,7 +140,6 @@ export default function AdminLayout() {
         <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 sticky top-0 z-40">
            <div className="flex items-center gap-4">
              <h1 className="text-lg font-semibold text-slate-800 uppercase">
-               {/* Dynamically show page title based on route if desired, defaulting to Dashboard */}
                {location.pathname === "/" ? "Dashboard" : location.pathname.replace('/', '').replace('-', ' ')}
              </h1>
            </div>
