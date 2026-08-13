@@ -98,6 +98,15 @@ export default function Products() {
     }
   });
 
+  // Fetch dynamic Product Types
+  const { data: dbProductTypes = [] } = useQuery({
+    queryKey: ['admin-product-types-list'],
+    queryFn: async () => {
+      const { data } = await supabase.from('product_types').select('*');
+      return data || [];
+    }
+  });
+
   const { data: products = [], isLoading, refetch, isFetching } = useQuery({
     queryKey: ['admin-products-list'],
     queryFn: async () => {
@@ -135,7 +144,6 @@ export default function Products() {
         discount: parseFloat(form.discount) || 0,
         stock: parseInt(form.stock) || 0,
         product_type: form.product_type || null,
-        // FIX: If the DB column is an array, we must pass it as an array (or null if empty)
         sizes: form.sizes ? [form.sizes] : null,
         tags: form.tags ? form.tags.split(',').map(t => t.trim()).filter(Boolean) : null,
         is_best_seller: form.is_best_seller,
@@ -213,7 +221,6 @@ export default function Products() {
       overview: p.overview || '', overview_khmer: p.overview_khmer || '', 
       price: p.price?.toString() || '', discount: p.discount?.toString() || '', 
       product_type: p.product_type || '', 
-      // FIX: Unwrap arrays back to strings for the edit form inputs
       sizes: Array.isArray(p.sizes) ? (p.sizes[0] || '') : (p.sizes || ''), 
       stock: p.stock?.toString() || '0', 
       tags: Array.isArray(p.tags) ? p.tags.join(', ') : (p.tags || ''), 
@@ -494,8 +501,10 @@ export default function Products() {
                     <label className="block text-xs font-semibold text-slate-600 uppercase mb-2">Product Type</label>
                     <select value={form.product_type} onChange={(e) => setForm({...form, product_type: e.target.value})} className="w-full border border-slate-300 rounded p-3 text-sm bg-white outline-none focus:border-slate-500">
                       <option value="">Select Product Type...</option>
-                      <option value="Merchandise">Merchandise</option>
-                      <option value="Cosmetics">Cosmetics</option>
+                      {dbProductTypes.map((/** @type {any} */ pt) => {
+                        const ptName = pt.title || pt.name || pt.id;
+                        return <option key={pt.id || ptName} value={ptName}>{ptName}</option>
+                      })}
                     </select>
                   </div>
 

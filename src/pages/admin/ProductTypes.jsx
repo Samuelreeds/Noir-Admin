@@ -31,9 +31,23 @@ export default function ProductTypes() {
     staleTime: 5 * 60 * 1000,
   });
 
-  // 2. Mutation to Insert a New Product Type
+  // 2. Fetch Categories for the Dropdown Menu
+  const { data: dbCategories = [] } = useQuery({
+    queryKey: ['admin-categories-list-for-types'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('categories')
+        .select('title, name')
+        .eq('status', true);
+      
+      if (error) throw error;
+      return data || [];
+    }
+  });
+
+  // 3. Mutation to Insert a New Product Type
   const addTypeMutation = useMutation({
-    mutationFn: async (/** @type {{ title: string, categories: string }} */ newType) => {
+    mutationFn: async (/** @type {any} */ newType) => {
       const { data, error } = await supabase
         .from('product_types')
         .insert([newType])
@@ -50,7 +64,8 @@ export default function ProductTypes() {
     },
     onError: (err) => {
       console.error("Error creating product type:", err);
-      alert("Failed to create product type. Please check your Supabase table schema.");
+      // FIX: Show the ACTUAL database error instead of a generic message
+      alert(`Database Error: ${err.message || "Failed to create product type"}`);
     }
   });
 
@@ -61,7 +76,7 @@ export default function ProductTypes() {
   const filteredTypes = productTypes.filter((/** @type {any} */ item) => {
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
-      const string = `${item.title || ''} ${item.categories || ''}`.toLowerCase();
+      const string = `${item.title || item.name || ''} ${item.categories || ''}`.toLowerCase();
       if (!string.includes(q)) return false;
     }
     return true;
@@ -74,9 +89,12 @@ export default function ProductTypes() {
   const handleSubmitNew = (/** @type {any} */ e) => {
     e.preventDefault();
     if (!newTitle) return alert("Please enter a product type title.");
+    
     addTypeMutation.mutate({
       title: newTitle,
-      categories: newCategory || 'General'
+      name: newTitle, // FIX: Send to both 'title' and 'name' to satisfy DB constraints
+      categories: newCategory || 'General',
+      status: 'active'
     });
   };
 
@@ -130,7 +148,7 @@ export default function ProductTypes() {
                 return (
                   <tr key={item.id} className="hover:bg-slate-50/50">
                     <td className="px-4 py-4 text-center text-slate-500">{displayId}</td>
-                    <td className="px-4 py-4 font-medium text-slate-900">{item.title}</td>
+                    <td className="px-4 py-4 font-medium text-slate-900">{item.title || item.name}</td>
                     <td className="px-4 py-4 text-slate-600">{item.categories || '-'}</td>
                     <td className="px-4 py-4 text-center">
                       <span className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-medium tracking-wider border ${
@@ -200,20 +218,26 @@ export default function ProductTypes() {
                   type="text" 
                   value={newTitle} 
                   onChange={(e) => setNewTitle(e.target.value)} 
-                  placeholder="e.g. Cosmetics" 
+                  placeholder="e.g. Dish Washing Liquid" 
                   required
                   className="w-full border border-slate-300 rounded px-3 py-2 text-sm outline-none focus:border-slate-500" 
                 />
               </div>
+              
+              {/* Updated Category Dropdown */}
               <div>
                 <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Categories</label>
-                <input 
-                  type="text" 
+                <select 
                   value={newCategory} 
                   onChange={(e) => setNewCategory(e.target.value)} 
-                  placeholder="e.g. Skincare" 
-                  className="w-full border border-slate-300 rounded px-3 py-2 text-sm outline-none focus:border-slate-500" 
-                />
+                  className="w-full border border-slate-300 rounded px-3 py-2 text-sm bg-white outline-none focus:border-slate-500 appearance-none cursor-pointer" 
+                >
+                  <option value="">Select a category...</option>
+                  {dbCategories.map((/** @type {any} */ cat) => {
+                    const catName = cat.title || cat.name;
+                    return <option key={catName} value={catName}>{catName}</option>
+                  })}
+                </select>
               </div>
 
               <div className="pt-4 flex justify-end gap-3 border-t border-slate-200">
