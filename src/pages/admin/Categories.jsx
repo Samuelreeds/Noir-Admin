@@ -106,6 +106,7 @@ export default function Categories() {
 
       const payload = {
         title: form.title,
+        name: form.title, // <--- FIX: Maps title to the required 'name' column for the database
         title_khmer: form.title_khmer,
         image: finalImageUrl || 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=300&q=80',
         ordering: parseInt(form.ordering.toString()) || 0,
@@ -148,6 +149,8 @@ export default function Categories() {
     setForm({
       ...defaultForm,
       ...cat,
+      // Fallback in case old categories only had 'name' populated
+      title: cat.title || cat.name || '', 
       image_preview: cat.image,
       image_file: null
     });
@@ -168,7 +171,7 @@ export default function Categories() {
   const filteredCategories = categories.filter((/** @type {any} */ cat) => {
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
-      const string = `${cat.title || ''} ${cat.title_khmer || ''}`.toLowerCase();
+      const string = `${cat.title || cat.name || ''} ${cat.title_khmer || ''}`.toLowerCase();
       if (!string.includes(q)) return false;
     }
     return true;
@@ -222,7 +225,7 @@ export default function Categories() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {isLoading ? (
-                  <tr><td colSpan={7} className="px-6. py-12 text-center text-slate-500">Loading categories...</td></tr>
+                  <tr><td colSpan={7} className="px-6 py-12 text-center text-slate-500">Loading categories...</td></tr>
                 ) : paginatedCategories.length === 0 ? (
                   <tr><td colSpan={7} className="px-6 py-12 text-center text-slate-500">No categories found. Click 'Add Category' to create one.</td></tr>
                 ) : (
@@ -233,10 +236,10 @@ export default function Categories() {
                         <td className="px-6 py-4 text-center text-slate-500">{displayId}</td>
                         <td className="px-6 py-4">
                           <div className="w-10 h-10 rounded overflow-hidden bg-slate-100 border border-slate-200">
-                            <img src={cat.image} alt={cat.title} className="w-full h-full object-cover" />
+                            <img src={cat.image} alt={cat.title || cat.name} className="w-full h-full object-cover" />
                           </div>
                         </td>
-                        <td className="px-6 py-4 font-medium text-slate-900">{cat.title}</td>
+                        <td className="px-6 py-4 font-medium text-slate-900">{cat.title || cat.name}</td>
                         <td className="px-6 py-4 text-slate-600">{cat.title_khmer || '-'}</td>
                         <td className="px-6 py-4 text-slate-600 uppercase text-xs font-medium">SHOW</td>
                         <td className="px-6 py-4 text-center">
