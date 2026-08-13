@@ -38,10 +38,12 @@ import AdminSizes from '@/pages/admin/Sizes';
 import AdminInventory from '@/pages/admin/Inventory';
 import AdminWebSetup from '@/pages/admin/WebSetup';
 
+
 // Auth Imports
 import Login from '@/pages/Login';
 import Register from '@/pages/Register';
 import ForgotPassword from '@/pages/ForgotPassword';
+
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -63,15 +65,47 @@ const AuthenticatedApp = () => {
     }
   }
 
-  // --- COMBINED PATH-BASED ROUTING ---
+  // --- SUBDOMAIN ROUTING LOGIC ---
+  const hostname = window.location.hostname;
+  // This allows it to work in production (admin.domain.com) AND local dev (admin.localhost)
+  const isAdminDomain = hostname.startsWith('admin.') || hostname === 'admin.localhost';
+
+  if (isAdminDomain) {
+    return (
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        
+        {/* Notice paths no longer need "/admin" since the whole domain is admin! */}
+        <Route element={<AdminLayout />}>
+          <Route path="/products" element={<AdminProducts />} />
+          <Route path="/products/inventory" element={<AdminInventory />} />
+          <Route path="/products/size" element={<AdminSizes />} />
+          <Route path="/products/color" element={<AdminColors />} />
+          <Route path="/products/advertisement" element={<AdminAdvertisement />} />
+          <Route path="/products/product" element={<AdminProducts />} />
+          <Route path="/products/product-type" element={<AdminProductTypes />} />
+          <Route path="/products/category" element={<AdminCategories />} />
+          <Route path="/customers" element={<AdminCustomers />} />
+          <Route path="/payments" element={<AdminPaymentHistory />} />
+          <Route path="/" element={<AdminDashboard />} />
+          <Route path="/orders" element={<AdminOrders />} />
+          <Route path="/web-setup" element={<AdminWebSetup />} />
+          {/* We will add the rest of the routes here as we build them */}
+        </Route>
+        <Route path="*" element={<PageNotFound />} />
+      </Routes>
+    );
+  }
+
+  // --- STANDARD STOREFRONT ROUTING ---
   return (
     <Routes>
-      {/* Shared Auth Routes */}
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
 
-      {/* --- STOREFRONT ROUTES (Root Path) --- */}
       <Route element={<StoreLayout />}>
         <Route path="/" element={<Home />} />
         <Route path="/shop" element={<Shop />} />
@@ -81,34 +115,11 @@ const AuthenticatedApp = () => {
         <Route path="/about" element={<About />} />
         <Route path="/contact" element={<Contact />} />
       </Route>
-
-      {/* --- ACCOUNT ROUTES --- */}
       <Route path="/account" element={<AccountLayout />}>
         <Route index element={<AccountProfile />} />
         <Route path="orders" element={<AccountOrders />} />
         <Route path="addresses" element={<AccountAddresses />} />
       </Route>
-
-      {/* --- ADMIN ROUTES (Prefixed with /admin) --- */}
-      <Route path="/admin" element={<AdminLayout />}>
-        <Route index element={<AdminDashboard />} />
-        <Route path="orders" element={<AdminOrders />} />
-        <Route path="customers" element={<AdminCustomers />} />
-        <Route path="payments" element={<AdminPaymentHistory />} />
-        <Route path="web-setup" element={<AdminWebSetup />} />
-        
-        {/* Product Sub-routes */}
-        <Route path="products" element={<AdminProducts />} />
-        <Route path="products/product" element={<AdminProducts />} />
-        <Route path="products/inventory" element={<AdminInventory />} />
-        <Route path="products/size" element={<AdminSizes />} />
-        <Route path="products/color" element={<AdminColors />} />
-        <Route path="products/advertisement" element={<AdminAdvertisement />} />
-        <Route path="products/product-type" element={<AdminProductTypes />} />
-        <Route path="products/category" element={<AdminCategories />} />
-      </Route>
-
-      {/* Fallback 404 Route */}
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );

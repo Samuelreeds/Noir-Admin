@@ -97,7 +97,7 @@ export default function AdminLayout() {
             )}
           </div>
 
-          {/* NEW: Collapsible Web Setting */}
+          {/* Collapsible Web Setting */}
           <div>
             <button onClick={() => toggleMenu('webSetting')} className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-slate-600 hover:bg-slate-50">
               <div className="flex items-center gap-3"><Settings size={18} /> Web Setting</div>
@@ -113,7 +113,7 @@ export default function AdminLayout() {
             )}
           </div>
 
-          {/* NEW: Collapsible General Setup */}
+          {/* Collapsible General Setup (Only Slider remaining) */}
           <div>
             <button onClick={() => toggleMenu('generalSetup')} className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-slate-600 hover:bg-slate-50">
               <div className="flex items-center gap-3"><Settings size={18} /> General Setup</div>
@@ -122,11 +122,6 @@ export default function AdminLayout() {
             {openMenus.generalSetup && (
               <div className="bg-slate-50 py-1 border-y border-slate-100">
                 <Link to="/web-setup?tab=slider" className={subItemClass('slider')}>— Slider</Link>
-                <Link to="/web-setup?tab=popup" className={subItemClass('popup')}>— Popup</Link>
-                <Link to="/web-setup?tab=feature" className={subItemClass('feature')}>— Feature</Link>
-                <Link to="/web-setup?tab=feedback" className={subItemClass('feedback')}>— Customer Feedback</Link>
-                <Link to="/web-setup?tab=ratings" className={subItemClass('ratings')}>— Product Ratings</Link>
-                <Link to="/web-setup?tab=faqs" className={subItemClass('faqs')}>— FAQs</Link>
               </div>
             )}
           </div>

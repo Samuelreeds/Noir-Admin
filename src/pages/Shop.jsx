@@ -24,8 +24,6 @@ export default function Shop() {
 
   const filters = {
     category: params.getAll("category"),
-    gender: params.getAll("gender"),
-    brand: params.getAll("brand"),
     color: params.getAll("color"),
     size: params.getAll("size"),
     minPrice: params.get("minPrice") ? Number(params.get("minPrice")) : null,
@@ -37,15 +35,12 @@ export default function Shop() {
 
   // Dynamic filter states
   const [categories, setCategories] = useState(/** @type {any[]} */ ([]));
-  const [brands, setBrands] = useState(/** @type {any[]} */ ([]));
   const [colors, setColors] = useState(/** @type {any[]} */ ([]));
   const [sizes, setSizes] = useState(/** @type {any[]} */ ([]));
-  const [genders, setGenders] = useState(/** @type {string[]} */ ([]));
 
   useEffect(() => {
     const loadData = async () => {
       try {
-        // Safe fetch helper prevents the page from crashing if a table hasn't been created yet
         const fetchSafe = async (/** @type {string} */ table) => {
           try {
             const { data, error } = await supabase.from(table).select("*").order("created_at", { ascending: false }).limit(50);
@@ -65,20 +60,15 @@ export default function Shop() {
 
         if (prodData) {
           setAll(prodData);
-          // Extract unique genders dynamically from the products the admin created
-          const uniqueGenders = [...new Set(prodData.map((/** @type {any} */ p) => p.gender).filter(Boolean))];
-          setGenders(/** @type {string[]} */ (uniqueGenders));
         }
 
-        const [catData, brandData, colorData, sizeData] = await Promise.all([
+        const [catData, colorData, sizeData] = await Promise.all([
           fetchSafe("categories"),
-          fetchSafe("brands"),
           fetchSafe("colors"),
           fetchSafe("sizes")
         ]);
 
         setCategories(catData);
-        setBrands(brandData);
         setColors(colorData);
         setSizes(sizeData);
       } catch (e) {
@@ -111,9 +101,16 @@ export default function Shop() {
 
   const filtered = useMemo(() => {
     let r = [...all];
-    if (filters.category.length) r = r.filter((/** @type {any} */ p) => filters.category.some((/** @type {string} */ c) => (p.category_name || "").toLowerCase() === c.toLowerCase() || (p.category_id || "") === c));
-    if (filters.gender.length) r = r.filter((/** @type {any} */ p) => filters.gender.includes(p.gender));
-    if (filters.brand.length) r = r.filter((/** @type {any} */ p) => filters.brand.includes(p.brand_id));
+    
+    // FIXED: Now correctly checks the "category" column string instead of category_name/id
+    if (filters.category.length) {
+      r = r.filter((/** @type {any} */ p) => 
+        filters.category.some((/** @type {string} */ c) => 
+          (p.category || "").toLowerCase().includes(c.toLowerCase())
+        )
+      );
+    }
+    
     if (filters.color.length) r = r.filter((/** @type {any} */ p) => (p.colors || []).some((/** @type {string} */ c) => filters.color.some((/** @type {string} */ fc) => c.toLowerCase().includes(fc.toLowerCase()))));
     if (filters.size.length) r = r.filter((/** @type {any} */ p) => (p.sizes || []).some((/** @type {string} */ s) => filters.size.includes(s)));
     
@@ -142,7 +139,7 @@ export default function Shop() {
   }, [all, filters, sort]);
 
   const paged = filtered.slice(0, page * PAGE_SIZE);
-  const activeCount = filters.category.length + filters.gender.length + filters.brand.length + filters.color.length + filters.size.length + (filters.minPrice != null ? 1 : 0) + (filters.maxPrice != null ? 1 : 0) + (filters.discount ? 1 : 0);
+  const activeCount = filters.category.length + filters.color.length + filters.size.length + (filters.minPrice != null ? 1 : 0) + (filters.maxPrice != null ? 1 : 0) + (filters.discount ? 1 : 0);
 
   /**
    * @param {{ title: string, children: React.ReactNode }} props
@@ -168,29 +165,11 @@ export default function Shop() {
 
   const FilterPanel = () => (
     <div>
-      {/* Dynamic Gender Filters */}
-      {genders.length > 0 && (
-        <FilterSection title="Gender">
-          {genders.map((/** @type {string} */ g) => (
-            <CheckRow key={g} active={filters.gender.includes(g)} onClick={() => toggleMulti("gender", g)} label={g.charAt(0).toUpperCase() + g.slice(1)} />
-          ))}
-        </FilterSection>
-      )}
-
       {/* Dynamic Category Filters */}
       {categories.length > 0 && (
         <FilterSection title="Category">
           {categories.map((/** @type {any} */ c) => (
             <CheckRow key={c.id} active={filters.category.includes(c.id) || filters.category.includes(c.name)} onClick={() => toggleMulti("category", c.name)} label={c.name} />
-          ))}
-        </FilterSection>
-      )}
-
-      {/* Dynamic Brand Filters */}
-      {brands.length > 0 && (
-        <FilterSection title="Brand">
-          {brands.map((/** @type {any} */ b) => (
-            <CheckRow key={b.id} active={filters.brand.includes(b.id)} onClick={() => toggleMulti("brand", b.id)} label={b.name} />
           ))}
         </FilterSection>
       )}

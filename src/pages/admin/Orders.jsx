@@ -20,6 +20,7 @@ const uploadProofFileToSupabase = async (/** @type {File} */ file, /** @type {st
 
 export default function Orders() {
   const [statusFilter, setStatusFilter] = useState('All Status');
+  const [currencyFilter, setCurrencyFilter] = useState('All Currency');
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
@@ -41,7 +42,7 @@ export default function Orders() {
       const { data, error } = await supabase
         .from('orders')
         .select(`
-          id, created_at, status, payment_method, shipping_address, subtotal, shipping_fee, tax, grand_total,
+          id, created_at, status, payment_method, shipping_address, subtotal, shipping_fee, tax, grand_total, currency,
           packed_at, shipped_at, delivered_at, internal_proof_url, delivery_proof_url, transaction_reference,
           order_items ( id, product_name, unit_price, quantity, selected_size, selected_color, total_price )
         `)
@@ -57,13 +58,20 @@ export default function Orders() {
   const updateStatusMutation = useMutation({
     mutationFn: async (/** @type {{ id: string, newStatus: string, timestampField: string }} */ { id, newStatus, timestampField }) => {
       const updateData = { status: newStatus, [timestampField]: new Date().toISOString() };
-      const { data, error } = await supabase.from('orders').update(updateData).eq('id', id).select().single();
+      
+      const { data, error } = await supabase.from('orders').update(updateData).eq('id', id).select();
+      
       if (error) throw error;
-      return data;
+      
+      // If RLS blocked the update, data will be empty. We explicitly throw an error now.
+      if (!data || data.length === 0) {
+        throw new Error("Update blocked by Database Security Policies. Please run the provided SQL command.");
+      }
+      
+      return data[0];
     },
     onSuccess: (updatedData) => {
       queryClient.invalidateQueries({ queryKey: ['admin-orders'] });
-      // FIXED: Removed the `: any` TypeScript annotation
       setSelectedOrder((/** @type {any} */ prev) => ({ ...prev, ...updatedData }));
     },
     onError: (err) => alert("Failed to update status: " + err.message)
@@ -77,13 +85,18 @@ export default function Orders() {
       
       const fileUrl = await uploadProofFileToSupabase(file, prefix, orderId);
       
-      const { data, error } = await supabase.from('orders').update({ [fieldToUpdate]: fileUrl }).eq('id', orderId).select().single();
+      const { data, error } = await supabase.from('orders').update({ [fieldToUpdate]: fileUrl }).eq('id', orderId).select();
+      
       if (error) throw error;
-      return data;
+      
+      if (!data || data.length === 0) {
+        throw new Error("Update blocked by Database Security Policies. Please run the provided SQL command.");
+      }
+      
+      return data[0];
     },
     onSuccess: (updatedData) => {
       queryClient.invalidateQueries({ queryKey: ['admin-orders'] });
-      // FIXED: Removed the `: any` TypeScript annotation
       setSelectedOrder((/** @type {any} */ prev) => ({ ...prev, ...updatedData }));
       setUploadingProof(null);
     },
@@ -93,10 +106,17 @@ export default function Orders() {
     }
   });
 
-  useEffect(() => { setCurrentPage(1); setSelectedOrderIds([]); }, [statusFilter, searchQuery, dateFrom, dateTo]);
+  useEffect(() => { setCurrentPage(1); setSelectedOrderIds([]); }, [statusFilter, currencyFilter, searchQuery, dateFrom, dateTo]);
 
   const filteredOrders = orders.filter((/** @type {any} */ order) => {
     if (statusFilter !== 'All Status' && order.status?.toLowerCase() !== statusFilter.toLowerCase()) return false;
+    
+    // Currency Filter
+    if (currencyFilter !== 'All Currency') {
+      const orderCurrency = (order.currency || 'USD').toUpperCase();
+      if (orderCurrency !== currencyFilter.toUpperCase()) return false;
+    }
+
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       const addr = order.shipping_address || {};
@@ -122,10 +142,22 @@ export default function Orders() {
   const exportToCSV = () => {
     const dataToExport = selectedOrderIds.length > 0 ? filteredOrders.filter((/** @type {any} */ o) => selectedOrderIds.includes(o.id)) : filteredOrders;
     if (dataToExport.length === 0) return alert("No data to export!");
-    const headers = ['Order ID', 'Date', 'Customer Name', 'Phone', 'Location', 'Address', 'Total Items', 'Payment', 'Status', 'Grand Total'];
+    const headers = ['Order ID', 'Date', 'Customer Name', 'Phone', 'Location', 'Address', 'Total Items', 'Payment', 'Currency', 'Status', 'Grand Total'];
     const rows = dataToExport.map((/** @type {any} */ order) => {
       const addr = order.shipping_address || {};
-      return [ `MA-${order.id.slice(-8).toUpperCase()}`, new Date(order.created_at).toLocaleDateString(), addr.name || 'N/A', addr.phone || 'N/A', addr.province || 'N/A', addr.address || 'N/A', order.order_items?.length || 0, order.payment_method === 'qr' ? 'Bank / QR' : order.payment_method, order.status, order.grand_total || 0 ].map(field => `"${String(field).replace(/"/g, '""')}"`).join(',');
+      return [ 
+        `MA-${order.id.slice(-8).toUpperCase()}`, 
+        new Date(order.created_at).toLocaleDateString(), 
+        addr.name || 'N/A', 
+        addr.phone || 'N/A', 
+        addr.province || 'N/A', 
+        addr.address || 'N/A', 
+        order.order_items?.length || 0, 
+        order.payment_method === 'qr' ? 'Bank / QR' : order.payment_method, 
+        order.currency || 'USD',
+        order.status, 
+        order.grand_total || 0 
+      ].map(field => `"${String(field).replace(/"/g, '""')}"`).join(',');
     });
     const blob = new Blob([[headers.join(','), ...rows].join('\n')], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.setAttribute('download', `orders_export_${new Date().toISOString().split('T')[0]}.csv`);
@@ -166,6 +198,14 @@ export default function Orders() {
           <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="border border-slate-300 rounded px-3 py-2 text-sm bg-white outline-none cursor-pointer">
             <option>All Status</option><option value="pending">Pending</option><option value="packed">Packed</option><option value="shipping">Shipping</option><option value="delivered">Delivered</option><option value="cancelled">Cancelled</option>
           </select>
+
+          {/* Currency Filter Dropdown */}
+          <select value={currencyFilter} onChange={(e) => setCurrencyFilter(e.target.value)} className="border border-slate-300 rounded px-3 py-2 text-sm bg-white outline-none cursor-pointer">
+            <option value="All Currency">All Currency</option>
+            <option value="USD">USD</option>
+            <option value="KHR">KHR</option>
+          </select>
+
           <div className="flex items-center border border-slate-300 rounded bg-white px-3">
             <span className="text-xs text-slate-400 mr-2">From</span><input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="py-1.5 text-sm bg-transparent outline-none text-slate-600 cursor-pointer" />
             <span className="text-xs text-slate-400 mx-3">—</span>
@@ -173,7 +213,7 @@ export default function Orders() {
           </div>
           <div className="relative">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search ID, name, phone, or address..." className="border border-slate-300 rounded pl-9 pr-4 py-2 text-sm w-[300px] md:w-[400px] outline-none focus:border-slate-500" />
+            <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search ID, name, phone, or address..." className="border border-slate-300 rounded pl-9 pr-4 py-2 text-sm w-[250px] md:w-[350px] outline-none focus:border-slate-500" />
           </div>
         </div>
       </div>
@@ -204,7 +244,7 @@ export default function Orders() {
             {loading ? (
               <tr><td colSpan={7} className="px-4 py-12 text-center text-slate-500">Loading orders...</td></tr>
             ) : paginatedOrders.length === 0 ? (
-              <tr><td colSpan={7} className="px-4 py-12 text-center text-slate-500">No orders found.</td></tr>
+              <tr><td colSpan={7} className="px-4 py-12 text-center text-slate-500">No orders found matching the filter.</td></tr>
             ) : (
               paginatedOrders.map((/** @type {any} */ order) => {
                 const addr = order.shipping_address || {};
@@ -214,7 +254,6 @@ export default function Orders() {
                     <td className="px-4 py-4"><input type="checkbox" checked={isSelected} onChange={() => handleSelectOne(order.id)} className="rounded border-slate-300 cursor-pointer" /></td>
                     <td className="px-4 py-4">
                       <div className="font-medium text-slate-800">MA-{order.id.slice(-8).toUpperCase()}</div>
-                      {/* FIXED: Changed to formatDateTime */}
                       <div className="text-xs text-slate-500 mt-0.5">{formatDateTime(order.created_at)}</div>
                     </td>
                     <td className="px-4 py-4">
@@ -227,7 +266,10 @@ export default function Orders() {
                     </td>
                     <td className="px-4 py-4">
                       <div className="text-slate-800 text-xs uppercase font-semibold">{order.payment_method === 'qr' ? 'Bank Transfer' : order.payment_method}</div>
-                      {order.payment_method !== 'cod' && <span className="inline-block px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-medium mt-1">Paid</span>}
+                      <div className="flex gap-1 mt-1">
+                        {order.payment_method !== 'cod' && <span className="inline-block px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-medium">Paid</span>}
+                        <span className="inline-block px-2 py-0.5 bg-slate-100 text-slate-700 rounded-full text-[10px] font-bold uppercase">{order.currency || 'USD'}</span>
+                      </div>
                     </td>
                     <td className="px-4 py-4">
                       <span className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wider uppercase border ${
@@ -313,6 +355,7 @@ export default function Orders() {
                   <div className="p-4 space-y-4">
                     <div><p className="text-[10px] uppercase text-slate-400 font-semibold mb-1">Order Reference</p><p className="text-sm font-semibold text-slate-900">MA-{selectedOrder.id.slice(-8).toUpperCase()}</p></div>
                     <div><p className="text-[10px] uppercase text-slate-400 font-semibold mb-1">Payment Method</p><p className="text-sm font-semibold text-slate-900 uppercase">{selectedOrder.payment_method === 'qr' ? 'Bank Transfer (QR)' : 'Cash on Delivery'}</p></div>
+                    <div><p className="text-[10px] uppercase text-slate-400 font-semibold mb-1">Currency</p><p className="text-sm font-bold text-slate-900 uppercase">{selectedOrder.currency || 'USD'}</p></div>
                     {selectedOrder.transaction_reference && <div><p className="text-[10px] uppercase text-slate-400 font-semibold mb-1">Bank Ref</p><p className="text-sm font-mono text-slate-600">{selectedOrder.transaction_reference}</p></div>}
                     <div><p className="text-[10px] uppercase text-slate-400 font-semibold mb-1">Status</p><span className="inline-block px-2 py-0.5 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded text-xs font-semibold">{selectedOrder.payment_method === 'cod' ? 'Pending COD' : 'Paid'}</span></div>
                   </div>
@@ -400,7 +443,7 @@ export default function Orders() {
                     <div className="w-full max-w-sm flex justify-between text-sm text-slate-600"><span>Sub Total</span><span>${selectedOrder.subtotal?.toFixed(2)}</span></div>
                     <div className="w-full max-w-sm flex justify-between text-sm text-slate-600"><span>Shipping Fees</span><span>{selectedOrder.shipping_fee === 0 ? 'Free' : `$${selectedOrder.shipping_fee?.toFixed(2)}`}</span></div>
                     {selectedOrder.tax > 0 && <div className="w-full max-w-sm flex justify-between text-sm text-slate-600"><span>Tax</span><span>${selectedOrder.tax?.toFixed(2)}</span></div>}
-                    <div className="w-full max-w-sm flex justify-between text-base font-bold text-slate-900 pt-3 border-t border-slate-200 mt-1"><span>Total</span><span>${selectedOrder.grand_total?.toFixed(2)}</span></div>
+                    <div className="w-full max-w-sm flex justify-between text-base font-bold text-slate-900 pt-3 border-t border-slate-200 mt-1"><span>Total</span><span>{selectedOrder.currency === 'KHR' ? `${selectedOrder.grand_total?.toLocaleString()} ៛` : `$${selectedOrder.grand_total?.toFixed(2)}`}</span></div>
                   </div>
                 </div>
 
@@ -491,7 +534,7 @@ export default function Orders() {
         </div>
       )}
 
-      {/* Print Overlay... (Unchanged from original) */}
+      {/* Print Overlay */}
       {isPrintModalOpen && selectedOrder && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-sm p-6 text-center animate-in fade-in zoom-in-95 duration-200">

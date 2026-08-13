@@ -9,14 +9,14 @@ const KHR_RATE = 4100; // Standard exchange rate for display purposes
 export default function PaymentHistory() {
   const [searchQuery, setSearchQuery] = useState('');
   
-  // 1. Replaced single date filter with date range state
+  // Date range state
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   
   const [currencyFilter, setCurrencyFilter] = useState('All Currency');
   const [currentPage, setCurrentPage] = useState(1);
 
-  // Fetch live orders with caching
+  // 1. Fetch live orders including currency field
   const { data: orders = [], isLoading, refetch, isFetching } = useQuery({
     queryKey: ['admin-payments'],
     queryFn: async () => {
@@ -24,7 +24,7 @@ export default function PaymentHistory() {
         .from('orders')
         .select(`
           id, created_at, status, payment_method, shipping_address, 
-          grand_total, shipping_fee, order_items(id)
+          grand_total, shipping_fee, currency, order_items(id)
         `)
         .order('created_at', { ascending: false });
 
@@ -39,12 +39,12 @@ export default function PaymentHistory() {
 
   // Calculate Summary Metrics (Top Cards)
   const totalOrders = orders.length;
-  const totalRevenueUSD = orders.reduce((sum, o) => sum + (o.grand_total || 0), 0);
-  const totalRevenueKHR = totalRevenueUSD * KHR_RATE;
-  const totalShippingUSD = orders.reduce((sum, o) => sum + (o.shipping_fee || 0), 0);
-  const totalShippingKHR = totalShippingUSD * KHR_RATE;
+  const totalRevenueUSD = orders.filter(o => (o.currency || 'USD') === 'USD').reduce((sum, o) => sum + (o.grand_total || 0), 0);
+  const totalRevenueKHR = orders.filter(o => o.currency === 'KHR').reduce((sum, o) => sum + (o.grand_total || 0), 0);
+  const totalShippingUSD = orders.filter(o => (o.currency || 'USD') === 'USD').reduce((sum, o) => sum + (o.shipping_fee || 0), 0);
+  const totalShippingKHR = orders.filter(o => o.currency === 'KHR').reduce((sum, o) => sum + (o.shipping_fee || 0), 0);
 
-  // 2. Updated Filter Logic with Date Range
+  // 2. Updated Filter Logic with Strict Currency Filtering & Date Range
   const filteredOrders = orders.filter((/** @type {any} */ order) => {
     // Search Query Filter
     if (searchQuery) {
@@ -52,6 +52,12 @@ export default function PaymentHistory() {
       const addr = order.shipping_address || {};
       const searchString = `${order.id} ${addr.name || ''} ${addr.phone || ''}`.toLowerCase();
       if (!searchString.includes(q)) return false;
+    }
+    
+    // Currency Filter (Strict Match)
+    if (currencyFilter !== 'All Currency') {
+      const orderCurrency = (order.currency || 'USD').toUpperCase();
+      if (orderCurrency !== currencyFilter.toUpperCase()) return false;
     }
     
     // Date Range Filter (Using ISO string comparison)
@@ -66,30 +72,26 @@ export default function PaymentHistory() {
   const totalPages = Math.ceil(filteredOrders.length / ITEMS_PER_PAGE) || 1;
   const paginatedOrders = filteredOrders.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
-  // Formatting helper to apply the Currency Filter to the UI
-  const formatPrice = (/** @type {number} */ usdAmount) => {
-    if (currencyFilter === 'KHR') return `${(usdAmount * KHR_RATE).toLocaleString()} ៛`;
-    return `$${usdAmount.toFixed(2)}`; // Defaults to USD for "All Currency" or "USD"
+  // Native price formatting helper based on individual order's currency
+  const formatOrderPrice = (/** @type {number} */ amount, /** @type {string} */ currency) => {
+    const curr = (currency || 'USD').toUpperCase();
+    if (curr === 'KHR') return `${(amount || 0).toLocaleString()} ៛`;
+    return `$${(amount || 0).toFixed(2)}`;
   };
 
-  // 3. Export to Excel (Refined for Date Range and active Currency)
+  // 3. Export to Excel
   const exportToCSV = () => {
     if (filteredOrders.length === 0) return alert("No data to export!");
     
-    const isKHR = currencyFilter === 'KHR';
-    const currencyLabel = isKHR ? 'KHR' : 'USD';
-    
     const headers = [
       'Order ID', 'Date', 'Customer Name', 'Shipping To', 
-      'Total Items', 'Payment Option', 'Status', 
-      `Price (${currencyLabel})`, `Shipping Fee (${currencyLabel})`
+      'Total Items', 'Payment Option', 'Currency', 'Status', 
+      'Price', 'Shipping Fee'
     ];
     
     const rows = filteredOrders.map((/** @type {any} */ o) => {
       const addr = o.shipping_address || {};
-      
-      const priceOutput = isKHR ? (o.grand_total * KHR_RATE) : o.grand_total;
-      const shippingOutput = isKHR ? (o.shipping_fee * KHR_RATE) : o.shipping_fee;
+      const curr = o.currency || 'USD';
 
       return [
         `MA-${o.id.slice(-8).toUpperCase()}`,
@@ -98,9 +100,10 @@ export default function PaymentHistory() {
         addr.province || 'N/A',
         o.order_items?.length || 0,
         o.payment_method === 'qr' ? 'ABA PAYWAY' : o.payment_method,
+        curr,
         o.status,
-        priceOutput || 0,
-        shippingOutput || 0
+        o.grand_total || 0,
+        o.shipping_fee || 0
       ].map(field => `"${String(field).replace(/"/g, '""')}"`).join(',');
     });
 
@@ -108,7 +111,6 @@ export default function PaymentHistory() {
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
     
-    // Dynamic filename based on date range
     let dateStr = new Date().toISOString().split('T')[0];
     if (startDate && endDate) dateStr = `${startDate}_to_${endDate}`;
     else if (startDate) dateStr = `from_${startDate}`;
@@ -143,25 +145,25 @@ export default function PaymentHistory() {
         <div className="bg-white p-4 rounded-md shadow-sm border border-slate-200 flex items-center gap-4">
           <div className="w-12 h-12 bg-slate-100 rounded flex items-center justify-center text-slate-600"><ShoppingCart size={20} /></div>
           <div>
-            <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-1">Product Sold (USD)</p>
+            <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-1">Revenue (USD)</p>
             <p className="text-xl font-bold text-slate-900">${totalRevenueUSD.toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
-            <p className="text-[10px] text-slate-400 mt-0.5">Products have been sold.</p>
+            <p className="text-[10px] text-slate-400 mt-0.5">Total USD collected.</p>
           </div>
         </div>
         <div className="bg-white p-4 rounded-md shadow-sm border border-slate-200 flex items-center gap-4">
           <div className="w-12 h-12 bg-slate-100 rounded flex items-center justify-center text-slate-600"><ShoppingCart size={20} /></div>
           <div>
-            <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-1">Product Sold (KHR)</p>
+            <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-1">Revenue (KHR)</p>
             <p className="text-xl font-bold text-slate-900">{totalRevenueKHR.toLocaleString()} ៛</p>
-            <p className="text-[10px] text-slate-400 mt-0.5">Products have been sold.</p>
+            <p className="text-[10px] text-slate-400 mt-0.5">Total KHR collected.</p>
           </div>
         </div>
         <div className="bg-white p-4 rounded-md shadow-sm border border-slate-200 flex items-center gap-4">
           <div className="w-12 h-12 bg-slate-100 rounded flex items-center justify-center text-slate-600"><Truck size={20} /></div>
           <div>
             <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-1">Shipping Fee</p>
-            <p className="text-xl font-bold text-slate-900">${totalShippingUSD.toLocaleString()} | {totalShippingKHR.toLocaleString()} ៛</p>
-            <p className="text-[10px] text-slate-400 mt-0.5">Total shipping fee in USD and KHR.</p>
+            <p className="text-base font-bold text-slate-900">${totalShippingUSD.toFixed(2)} | {totalShippingKHR.toLocaleString()} ៛</p>
+            <p className="text-[10px] text-slate-400 mt-0.5">Total shipping fee collected.</p>
           </div>
         </div>
       </div>
@@ -186,11 +188,13 @@ export default function PaymentHistory() {
               </div>
             </div>
 
+            {/* Currency Filter Dropdown */}
             <select value={currencyFilter} onChange={(e) => setCurrencyFilter(e.target.value)} className="border border-slate-300 rounded px-3 py-2 text-sm bg-white outline-none cursor-pointer">
-              <option>All Currency</option>
-              <option>USD</option>
-              <option>KHR</option>
+              <option value="All Currency">All Currency</option>
+              <option value="USD">USD</option>
+              <option value="KHR">KHR</option>
             </select>
+            
             <div className="relative">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search..." className="border border-slate-300 rounded pl-9 pr-4 py-2 text-sm w-[250px] outline-none focus:border-slate-500" />
@@ -216,6 +220,7 @@ export default function PaymentHistory() {
                 <th className="px-4 py-3">Shipping To</th>
                 <th className="px-4 py-3 text-center">Total Items</th>
                 <th className="px-4 py-3">Payment Option</th>
+                <th className="px-4 py-3">Currency</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3 text-right">Price</th>
                 <th className="px-4 py-3 text-right">Shipping Fee</th>
@@ -223,12 +228,13 @@ export default function PaymentHistory() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {isLoading ? (
-                <tr><td colSpan={8} className="px-4 py-12 text-center text-slate-500">Loading data...</td></tr>
+                <tr><td colSpan={9} className="px-4 py-12 text-center text-slate-500">Loading data...</td></tr>
               ) : paginatedOrders.length === 0 ? (
-                <tr><td colSpan={8} className="px-4 py-12 text-center text-slate-500">No payment history found.</td></tr>
+                <tr><td colSpan={9} className="px-4 py-12 text-center text-slate-500">No payment history found matching the filter.</td></tr>
               ) : (
                 paginatedOrders.map((/** @type {any} */ order) => {
                   const addr = order.shipping_address || {};
+                  const orderCurrency = order.currency || 'USD';
                   return (
                     <tr key={order.id} className="hover:bg-slate-50/50">
                       <td className="px-4 py-4">
@@ -246,14 +252,19 @@ export default function PaymentHistory() {
                       <td className="px-4 py-4 text-center text-slate-800">{order.order_items?.length || 0}</td>
                       <td className="px-4 py-4 text-slate-800 text-xs uppercase">{order.payment_method === 'qr' ? 'ABA PAYWAY' : order.payment_method}</td>
                       <td className="px-4 py-4">
+                        <span className="inline-block px-2 py-0.5 bg-slate-100 text-slate-700 rounded text-xs font-bold uppercase">
+                          {orderCurrency}
+                        </span>
+                      </td>
+                      <td className="px-4 py-4">
                         <span className="inline-block px-2 py-1 bg-emerald-100 text-emerald-700 rounded text-xs font-medium border border-emerald-200">
                           {order.status === 'pending' ? 'Paid' : 'Delivered'}
                         </span>
                       </td>
                       
-                      {/* Price cells updated to use dynamic formatPrice helper */}
-                      <td className="px-4 py-4 text-right font-medium text-slate-900">{formatPrice(order.grand_total || 0)}</td>
-                      <td className="px-4 py-4 text-right text-slate-600">{formatPrice(order.shipping_fee || 0)}</td>
+                      {/* Price cells showing native order currency values */}
+                      <td className="px-4 py-4 text-right font-medium text-slate-900">{formatOrderPrice(order.grand_total, orderCurrency)}</td>
+                      <td className="px-4 py-4 text-right text-slate-600">{formatOrderPrice(order.shipping_fee, orderCurrency)}</td>
                     </tr>
                   );
                 })

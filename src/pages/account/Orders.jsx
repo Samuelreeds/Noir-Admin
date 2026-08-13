@@ -1,13 +1,14 @@
 import React, { useEffect, useState } from "react";
 import { useOutletContext, Link } from "react-router-dom";
-import { ChevronDown, Check } from "lucide-react";
+import { ChevronDown, Check, XCircle } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { Image as BaseImage } from "@/components/ui/image";
 
 /** @type {any} */
 const Image = BaseImage;
 
-const STATUSES = ["pending", "processing", "shipped", "delivered"];
+// FIXED: Perfectly matched the exact database status strings used by the Admin Panel
+const STATUSES = ["pending", "packed", "shipping", "delivered"];
 
 export default function AccountOrders() {
   const { user } = /** @type {any} */ (useOutletContext());
@@ -19,7 +20,6 @@ export default function AccountOrders() {
     (async () => {
       if (!user?.id) return;
       try {
-        // Removed the strict products() join to prevent FK failures from dropping the order items
         const { data, error } = await supabase
           .from('orders')
           .select('*, order_items(*)')
@@ -33,7 +33,7 @@ export default function AccountOrders() {
           total: Number(o.grand_total) || 0,
           items: o.order_items?.map((/** @type {any} */ i) => ({
             name: i.product_name,
-            image: i.product_image || '', // Fallback if image isn't saved directly in order_items
+            image: i.product_image || '', 
             size: i.selected_size,
             color: i.selected_color,
             quantity: i.quantity,
@@ -65,6 +65,7 @@ export default function AccountOrders() {
           {orders.map((/** @type {any} */ o) => {
             const open = expanded === o.id;
             const currentStepIndex = STATUSES.indexOf((o.status || "pending").toLowerCase());
+            const isCancelled = o.status?.toLowerCase() === "cancelled";
 
             return (
               <div key={o.id}>
@@ -74,35 +75,48 @@ export default function AccountOrders() {
                     <p className="label-mono text-[10px]">{o.order_number || String(o.id).slice(-8).toUpperCase()}</p>
                     <p className="label-mono text-muted-foreground text-[9px] mt-0.5">{new Date(o.created_at).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })}</p>
                   </div>
-                  <span className={`label-mono text-[9px] px-2 py-1 uppercase ${o.status === "delivered" || o.status === "paid" ? "bg-foreground text-background" : "bg-muted"}`}>{o.status}</span>
+                  <span className={`label-mono text-[9px] px-2 py-1 uppercase ${
+                    o.status === "delivered" || o.status === "paid" ? "bg-foreground text-background" : 
+                    isCancelled ? "bg-red-100 text-red-700" : "bg-muted"
+                  }`}>
+                    {o.status}
+                  </span>
                   <p className="font-mono text-sm ml-auto">${(o.total || 0).toFixed(2)}</p>
                 </button>
                 
                 {open && (
                   <div className="px-5 pb-8 pt-6 bg-muted/20">
                     
-                    {/* Step-by-Step Order Tracker */}
-                    <div className="flex w-full mb-10">
-                      {STATUSES.map((step, idx) => {
-                        const isCompleted = idx <= currentStepIndex;
-                        return (
-                          <div key={step} className="flex-1 flex flex-col items-center relative">
-                            <div className="w-full flex items-center relative">
-                              <div className={`h-[1px] flex-1 ${idx === 0 ? "bg-transparent" : (isCompleted ? "bg-foreground" : "bg-muted-foreground/30")}`} />
-                              
-                              <div className={`w-5 h-5 rounded-full border flex-shrink-0 flex items-center justify-center transition-colors relative z-10 ${isCompleted ? "border-foreground bg-foreground text-background" : "border-muted-foreground/30 bg-background"}`}>
-                                {isCompleted && <Check size={12} strokeWidth={3} />}
+                    {/* Step-by-Step Order Tracker OR Cancelled Notice */}
+                    {isCancelled ? (
+                      <div className="flex flex-col items-center justify-center py-6 mb-10 bg-red-50/50 border border-red-100 rounded text-red-600">
+                        <XCircle size={28} className="mb-2 opacity-80" />
+                        <p className="font-display font-bold uppercase tracking-wider text-sm">Order Cancelled</p>
+                        <p className="text-xs text-red-500/80 mt-1">This order will not be fulfilled.</p>
+                      </div>
+                    ) : (
+                      <div className="flex w-full mb-10">
+                        {STATUSES.map((step, idx) => {
+                          const isCompleted = idx <= currentStepIndex;
+                          return (
+                            <div key={step} className="flex-1 flex flex-col items-center relative">
+                              <div className="w-full flex items-center relative">
+                                <div className={`h-[1px] flex-1 ${idx === 0 ? "bg-transparent" : (isCompleted ? "bg-foreground" : "bg-muted-foreground/30")}`} />
+                                
+                                <div className={`w-5 h-5 rounded-full border flex-shrink-0 flex items-center justify-center transition-colors relative z-10 ${isCompleted ? "border-foreground bg-foreground text-background" : "border-muted-foreground/30 bg-background"}`}>
+                                  {isCompleted && <Check size={12} strokeWidth={3} />}
+                                </div>
+                                
+                                <div className={`h-[1px] flex-1 ${idx === STATUSES.length - 1 ? "bg-transparent" : (idx < currentStepIndex ? "bg-foreground" : "bg-muted-foreground/30")}`} />
                               </div>
-                              
-                              <div className={`h-[1px] flex-1 ${idx === STATUSES.length - 1 ? "bg-transparent" : (idx < currentStepIndex ? "bg-foreground" : "bg-muted-foreground/30")}`} />
+                              <span className={`absolute top-8 label-mono text-[9px] uppercase text-center ${isCompleted ? "text-foreground" : "text-muted-foreground"}`}>
+                                {step}
+                              </span>
                             </div>
-                            <span className={`absolute top-8 label-mono text-[9px] uppercase text-center ${isCompleted ? "text-foreground" : "text-muted-foreground"}`}>
-                              {step}
-                            </span>
-                          </div>
-                        )
-                      })}
-                    </div>
+                          )
+                        })}
+                      </div>
+                    )}
 
                     <p className="label-mono text-muted-foreground text-[9px] mb-3 uppercase">Order Items</p>
                     <div className="space-y-3">
