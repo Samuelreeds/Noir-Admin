@@ -69,23 +69,20 @@ export default function WebSetup() {
   const [saveSuccess, setSaveSuccess] = useState(false);
 
   const defaultStoreForm = {
+    hero_heading: 'WELCOME TO NOIR MTD', hero_subheading: 'DISCOVER OUR LATEST COLLECTION.',
+    hero_button_text: 'SHOP NOW', hero_button_link: '/shop',
     about_heading: '', about_text: '', about_image: '', 
     about_image_file: /** @type {File | null} */ (null), 
     about_image_preview: '',
-    promo_heading: 'The Signature Glow Series.', 
-    promo_subheading: 'The Skin-First Approach',
-    promo_image: '', 
-    promo_image_file: /** @type {File | null} */ (null), 
-    promo_image_preview: '',
+    promo_heading: 'The Signature Glow Series.', promo_subheading: 'The Skin-First Approach',
+    promo_image: '', promo_image_file: /** @type {File | null} */ (null), promo_image_preview: '',
     promo_button_text: 'Discover', promo_button_link: '/shop',
     contact_email: '', contact_phone: '', social_instagram: '', store_genders: 'Men, Women, Unisex',
     shipping_pp_price: '1.50', shipping_province_price: '2.50', enable_tax: false, tax_rate: '8.00'
   };
 
   const defaultSliderForm = {
-    id: null, image_url: '', 
-    image_file: /** @type {File | null} */ (null), 
-    image_preview: '',
+    id: null, image_url: '', image_file: /** @type {File | null} */ (null), image_preview: '',
     ordering: 0, status: true, cta_enabled: true,
     cta_link: '/shop', cta_text_en: 'Shop Now', cta_text_kh: 'ទិញឥឡូវនេះ'
   };
@@ -115,6 +112,10 @@ export default function WebSetup() {
     if (storeSettings && Object.keys(storeSettings).length > 0) {
       setStoreForm(/** @type {any} */ (prev => ({
         ...prev, ...storeSettings,
+        hero_heading: storeSettings.hero_heading || 'WELCOME TO NOIR MTD',
+        hero_subheading: storeSettings.hero_subheading || 'DISCOVER OUR LATEST COLLECTION.',
+        hero_button_text: storeSettings.hero_button_text || 'SHOP NOW',
+        hero_button_link: storeSettings.hero_button_link || '/shop',
         about_image_preview: storeSettings.about_image || '',
         promo_image_preview: storeSettings.promo_image || '',
         promo_heading: storeSettings.promo_heading || 'The Signature Glow Series.',
@@ -140,6 +141,8 @@ export default function WebSetup() {
 
       const payload = {
         id: 1,
+        hero_heading: storeForm.hero_heading, hero_subheading: storeForm.hero_subheading,
+        hero_button_text: storeForm.hero_button_text, hero_button_link: storeForm.hero_button_link,
         about_heading: storeForm.about_heading, about_text: storeForm.about_text, about_image: aboutUrl,
         promo_heading: storeForm.promo_heading, promo_subheading: storeForm.promo_subheading, promo_image: promoUrl,
         promo_button_text: storeForm.promo_button_text, promo_button_link: storeForm.promo_button_link,
@@ -386,7 +389,7 @@ export default function WebSetup() {
               
               <div className="bg-slate-50 p-6 flex justify-between items-center border-b border-slate-200">
                 <h1 className="text-xl font-bold text-slate-800 uppercase tracking-wide">
-                  {activeTab === 'about' ? 'About Section & Promotional Banner' : activeTab === 'contact' ? 'Footer & Contact' : activeTab === 'filters' ? 'Store Filters' : 'Shipping & Tax'}
+                  {activeTab === 'about' ? 'Banners & About Section' : activeTab === 'contact' ? 'Footer & Contact' : activeTab === 'filters' ? 'Store Filters' : 'Shipping & Tax'}
                 </h1>
                 <button onClick={() => saveStoreSettingsMutation.mutate()} disabled={saveStoreSettingsMutation.isPending} className="flex items-center gap-2 px-5 py-2.5 bg-slate-900 text-white hover:bg-slate-800 rounded font-medium text-sm transition-all disabled:opacity-50">
                   {saveStoreSettingsMutation.isPending ? <RefreshCcw size={16} className="animate-spin" /> : saveSuccess ? <CheckCircle size={16} className="text-emerald-400" /> : <Save size={16} />} Save Changes
@@ -396,27 +399,17 @@ export default function WebSetup() {
               <div className="p-6 md:p-8 w-full max-w-4xl mx-auto">
                 {activeTab === 'about' && (
                   <div className="space-y-12">
-                    {/* About Section */}
+                    
+                    {/* Hero Section (Homepage Top) */}
                     <div className="space-y-6">
-                      <h3 className="text-base font-bold text-slate-800 uppercase tracking-wide border-b border-slate-200 pb-2">About Section</h3>
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-600 uppercase mb-3">About Image</label>
-                        <div className="border-2 border-dashed border-slate-200 rounded-xl p-4 bg-slate-50 text-center w-full">
-                          {storeForm.about_image_preview ? (
-                            <div className="relative w-full max-w-sm mx-auto h-48 rounded-lg overflow-hidden mb-3"><img src={storeForm.about_image_preview} alt="About Preview" className="w-full h-full object-cover" /></div>
-                          ) : (
-                            <div className="w-full h-32 flex flex-col items-center justify-center text-slate-400 mb-3"><ImageIcon size={32} className="mb-2" /><p className="text-sm">No image uploaded</p></div>
-                          )}
-                          <input type="file" accept="image/*" onChange={(e) => { const f = e.target.files?.[0]; if(f) setStoreForm(/** @type {any} */ (p => ({...p, about_image_file: f, about_image_preview: URL.createObjectURL(f)}))) }} className="w-full text-sm text-slate-600 cursor-pointer" />
-                        </div>
-                      </div>
-                      <div><label className="block text-xs font-semibold text-slate-600 uppercase mb-2">About Heading</label><input type="text" value={storeForm.about_heading} onChange={e => setStoreForm({...storeForm, about_heading: e.target.value})} className="w-full border border-slate-300 rounded p-3 text-sm outline-none" /></div>
-                      <div><label className="block text-xs font-semibold text-slate-600 uppercase mb-2">About Text Paragraph</label><textarea value={storeForm.about_text} onChange={e => setStoreForm({...storeForm, about_text: e.target.value})} rows={5} className="w-full border border-slate-300 rounded p-3 text-sm outline-none resize-none" /></div>
+                      <h3 className="text-base font-bold text-slate-800 uppercase tracking-wide border-b border-slate-200 pb-2">Hero Section (Homepage Top)</h3>
+                      <div><label className="block text-xs font-semibold text-slate-600 uppercase mb-2">Hero Heading</label><input type="text" value={storeForm.hero_heading} onChange={e => setStoreForm({...storeForm, hero_heading: e.target.value})} className="w-full border border-slate-300 rounded p-3 text-sm outline-none" /></div>
+                      <div><label className="block text-xs font-semibold text-slate-600 uppercase mb-2">Hero Subheading</label><input type="text" value={storeForm.hero_subheading} onChange={e => setStoreForm({...storeForm, hero_subheading: e.target.value})} className="w-full border border-slate-300 rounded p-3 text-sm outline-none" /></div>
                     </div>
 
                     {/* Promotional Banner Section */}
                     <div className="space-y-6 pt-6 border-t border-slate-200">
-                      <h3 className="text-base font-bold text-slate-800 uppercase tracking-wide border-b border-slate-200 pb-2">Promotional Banner (Homepage)</h3>
+                      <h3 className="text-base font-bold text-slate-800 uppercase tracking-wide border-b border-slate-200 pb-2">Promotional Banner (Homepage Bottom)</h3>
                       <div>
                         <label className="block text-xs font-semibold text-slate-600 uppercase mb-3">Banner Cover Image</label>
                         <div className="border-2 border-dashed border-slate-200 rounded-xl p-4 bg-slate-50 text-center w-full">
@@ -425,7 +418,8 @@ export default function WebSetup() {
                           ) : (
                             <div className="w-full h-32 flex flex-col items-center justify-center text-slate-400 mb-3"><ImageIcon size={32} className="mb-2" /><p className="text-sm">No banner image uploaded</p></div>
                           )}
-                          <input type="file" accept="image/*" onChange={(e) => { const f = e.target.files?.[0]; if(f) setStoreForm(/** @type {any} */ (p => ({...p, promo_image_file: f, promo_image_preview: URL.createObjectURL(f)}))) }} className="w-full text-sm text-slate-600 cursor-pointer" />
+                          {/* FIXED: JSDoc Inline Parameter Typing for TypeScript */}
+                          <input type="file" accept="image/*" onChange={(e) => { const f = e.target.files?.[0]; if(f) setStoreForm((/** @type {any} */ p) => ({...p, promo_image_file: f, promo_image_preview: URL.createObjectURL(f)})) }} className="w-full text-sm text-slate-600 cursor-pointer" />
                         </div>
                       </div>
                       <div><label className="block text-xs font-semibold text-slate-600 uppercase mb-2">Banner Subheading</label><input type="text" value={storeForm.promo_subheading} onChange={e => setStoreForm({...storeForm, promo_subheading: e.target.value})} className="w-full border border-slate-300 rounded p-3 text-sm outline-none" /></div>
@@ -435,6 +429,26 @@ export default function WebSetup() {
                         <div><label className="block text-xs font-semibold text-slate-600 uppercase mb-2">Button Link URL</label><input type="text" value={storeForm.promo_button_link} onChange={e => setStoreForm({...storeForm, promo_button_link: e.target.value})} className="w-full border border-slate-300 rounded p-3 text-sm outline-none font-mono" /></div>
                       </div>
                     </div>
+
+                    {/* About Section */}
+                    <div className="space-y-6 pt-6 border-t border-slate-200">
+                      <h3 className="text-base font-bold text-slate-800 uppercase tracking-wide border-b border-slate-200 pb-2">About Us Section</h3>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-600 uppercase mb-3">About Image</label>
+                        <div className="border-2 border-dashed border-slate-200 rounded-xl p-4 bg-slate-50 text-center w-full">
+                          {storeForm.about_image_preview ? (
+                            <div className="relative w-full max-w-sm mx-auto h-48 rounded-lg overflow-hidden mb-3"><img src={storeForm.about_image_preview} alt="About Preview" className="w-full h-full object-cover" /></div>
+                          ) : (
+                            <div className="w-full h-32 flex flex-col items-center justify-center text-slate-400 mb-3"><ImageIcon size={32} className="mb-2" /><p className="text-sm">No image uploaded</p></div>
+                          )}
+                          {/* FIXED: JSDoc Inline Parameter Typing for TypeScript */}
+                          <input type="file" accept="image/*" onChange={(e) => { const f = e.target.files?.[0]; if(f) setStoreForm((/** @type {any} */ p) => ({...p, about_image_file: f, about_image_preview: URL.createObjectURL(f)})) }} className="w-full text-sm text-slate-600 cursor-pointer" />
+                        </div>
+                      </div>
+                      <div><label className="block text-xs font-semibold text-slate-600 uppercase mb-2">About Heading</label><input type="text" value={storeForm.about_heading} onChange={e => setStoreForm({...storeForm, about_heading: e.target.value})} className="w-full border border-slate-300 rounded p-3 text-sm outline-none" /></div>
+                      <div><label className="block text-xs font-semibold text-slate-600 uppercase mb-2">About Text Paragraph</label><textarea value={storeForm.about_text} onChange={e => setStoreForm({...storeForm, about_text: e.target.value})} rows={5} className="w-full border border-slate-300 rounded p-3 text-sm outline-none resize-none" /></div>
+                    </div>
+
                   </div>
                 )}
 
