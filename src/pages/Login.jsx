@@ -127,56 +127,67 @@ export default function Login() {
       }
     >
       {!isAdminDomain && (
-        <div className="space-y-4 mb-6 flex flex-col items-center w-full">
-          <Button
-            variant="outline"
-            className="w-full h-12 text-sm font-medium"
-            onClick={handleGoogle}
-            disabled={loading}
-          >
-            <GoogleIcon className="w-5 h-5 mr-2" />
-            Continue with Google
-          </Button>
-
-          {isLocalDev ? (
-            <div 
-              className={`relative w-full h-12 overflow-hidden rounded-md border border-input bg-background transition-colors flex items-center justify-center text-sm font-medium ${loading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-accent hover:text-accent-foreground cursor-pointer'}`}
-              onClick={() => {
-                if (!loading) {
-                  alert("Local Dev Mode: To test actual Telegram Login, you must run this via ngrok or production domain to bypass Telegram's CSP frame blocking.");
-                }
-              }}
+        <>
+          <div className="space-y-4 mb-6 flex flex-col items-center w-full">
+            <Button
+              variant="outline"
+              className="w-full h-12 text-sm font-medium"
+              onClick={handleGoogle}
+              disabled={loading}
             >
-              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : (
-                <>
-                  <svg className="w-5 h-5 mr-2 text-[#229ED9]" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.14.18-.357.223-.548.223l.188-2.85 5.18-4.686c.223-.195-.054-.285-.346-.111l-6.4 4.024-2.76-.86c-.6-.185-.615-.6.125-.89l10.736-4.133c.5-.186.945.115.825.912z"/>
-                  </svg>
-                  Continue with Telegram (Local)
-                </>
-              )}
-            </div>
-          ) : (
-            <div className={`relative w-full h-12 overflow-hidden rounded-md border border-input bg-background transition-colors flex items-center justify-center ${loading ? 'opacity-50' : 'hover:bg-accent hover:text-accent-foreground cursor-pointer'}`}>
-              <div className="absolute inset-0 flex items-center justify-center text-sm font-medium pointer-events-none">
+              <GoogleIcon className="w-5 h-5 mr-2" />
+              Continue with Google
+            </Button>
+
+            {isLocalDev ? (
+              <div 
+                className={`relative w-full h-12 overflow-hidden rounded-md border border-input bg-background transition-colors flex items-center justify-center text-sm font-medium ${loading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-accent hover:text-accent-foreground cursor-pointer'}`}
+                onClick={() => {
+                  if (!loading) {
+                    alert("Local Dev Mode: To test actual Telegram Login, you must run this via ngrok or production domain to bypass Telegram's CSP frame blocking.");
+                  }
+                }}
+              >
                 {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : (
                   <>
                     <svg className="w-5 h-5 mr-2 text-[#229ED9]" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
                       <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.14.18-.357.223-.548.223l.188-2.85 5.18-4.686c.223-.195-.054-.285-.346-.111l-6.4 4.024-2.76-.86c-.6-.185-.615-.6.125-.89l10.736-4.133c.5-.186.945.115.825.912z"/>
                     </svg>
-                    Continue with Telegram
+                    Continue with Telegram (Local)
                   </>
                 )}
               </div>
-              
-              {!loading && (
-                <div className="absolute inset-0 z-50 flex items-center justify-center w-full h-full" style={{ opacity: 0.01 }}>
-                  <div ref={telegramWrapperRef} className="flex items-center justify-center w-full h-full" style={{ transform: "scale(2.5)", transformOrigin: "center" }} />
+            ) : (
+              <div className={`relative w-full h-12 overflow-hidden rounded-md border border-input bg-background transition-colors flex items-center justify-center ${loading ? 'opacity-50' : 'hover:bg-accent hover:text-accent-foreground cursor-pointer'}`}>
+                <div className="absolute inset-0 flex items-center justify-center text-sm font-medium pointer-events-none">
+                  {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : (
+                    <>
+                      <svg className="w-5 h-5 mr-2 text-[#229ED9]" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.14.18-.357.223-.548.223l.188-2.85 5.18-4.686c.223-.195-.054-.285-.346-.111l-6.4 4.024-2.76-.86c-.6-.185-.615-.6.125-.89l10.736-4.133c.5-.186.945.115.825.912z"/>
+                      </svg>
+                      Continue with Telegram
+                    </>
+                  )}
                 </div>
-              )}
+                
+                {!loading && (
+                  <div className="absolute inset-0 z-50 flex items-center justify-center w-full h-full" style={{ opacity: 0.01 }}>
+                    <div ref={telegramWrapperRef} className="flex items-center justify-center w-full h-full" style={{ transform: "scale(2.5)", transformOrigin: "center" }} />
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="relative mb-6">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-border" />
             </div>
-          )}
-        </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-card px-3 text-muted-foreground">or</span>
+            </div>
+          </div>
+        </>
       )}
 
       {error && (
@@ -185,58 +196,57 @@ export default function Login() {
         </div>
       )}
 
-      {isAdminDomain && (
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
-            <div className="relative">
-              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
-              <Input
-                id="email"
-                type="email"
-                autoComplete="email"
-                autoFocus
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="pl-10 h-12"
-                required
-              />
-            </div>
+      {/* The email/password form is now visible for everyone again */}
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="email">Email</Label>
+          <div className="relative">
+            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
+            <Input
+              id="email"
+              type="email"
+              autoComplete="email"
+              autoFocus
+              placeholder="you@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="pl-10 h-12"
+              required
+            />
           </div>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="password">Password</Label>
-              <Link to="/forgot-password" className="text-xs text-primary hover:underline">
-                Forgot password?
-              </Link>
-            </div>
-            <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
-              <Input
-                id="password"
-                type="password"
-                autoComplete="current-password"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="pl-10 h-12"
-                required
-              />
-            </div>
+        </div>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label htmlFor="password">Password</Label>
+            <Link to="/forgot-password" className="text-xs text-primary hover:underline">
+              Forgot password?
+            </Link>
           </div>
-          <Button type="submit" className="w-full h-12 font-medium" disabled={loading}>
-            {loading ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Logging in...
-              </>
-            ) : (
-              "Log in"
-            )}
-          </Button>
-        </form>
-      )}
+          <div className="relative">
+            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
+            <Input
+              id="password"
+              type="password"
+              autoComplete="current-password"
+              placeholder="••••••••"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="pl-10 h-12"
+              required
+            />
+          </div>
+        </div>
+        <Button type="submit" className="w-full h-12 font-medium" disabled={loading}>
+          {loading ? (
+            <>
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              Logging in...
+            </>
+          ) : (
+            "Log in"
+          )}
+        </Button>
+      </form>
     </AuthLayout>
   );
 }
