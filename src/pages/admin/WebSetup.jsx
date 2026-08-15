@@ -110,7 +110,8 @@ export default function WebSetup() {
 
   useEffect(() => {
     if (storeSettings && Object.keys(storeSettings).length > 0) {
-      setStoreForm(/** @type {any} */ (prev => ({
+      // FIXED: Applied JSDoc directly to the `prev` parameter
+      setStoreForm((/** @type {any} */ prev) => ({
         ...prev, ...storeSettings,
         hero_heading: storeSettings.hero_heading || 'WELCOME TO NOIR MTD',
         hero_subheading: storeSettings.hero_subheading || 'DISCOVER OUR LATEST COLLECTION.',
@@ -127,7 +128,7 @@ export default function WebSetup() {
         shipping_province_price: storeSettings.shipping_province_price?.toString() ?? '2.50',
         enable_tax: !!storeSettings.enable_tax,
         tax_rate: storeSettings.tax_rate?.toString() ?? '8.00'
-      })));
+      }));
     }
   }, [storeSettings]);
 
@@ -158,13 +159,14 @@ export default function WebSetup() {
     },
     onSuccess: (/** @type {any} */ data) => {
       queryClient.invalidateQueries({ queryKey: ['admin-store-settings'] });
-      setStoreForm(/** @type {any} */ (prev => ({ 
+      // FIXED: Applied JSDoc directly to the `prev` parameter
+      setStoreForm((/** @type {any} */ prev) => ({ 
         ...prev, 
         about_image_file: null, 
         about_image: data.about_image,
         promo_image_file: null,
         promo_image: data.promo_image 
-      })));
+      }));
       setSaveSuccess(true); setTimeout(() => setSaveSuccess(false), 3000);
     },
     onError: (/** @type {any} */ err) => alert(err.message)
@@ -217,7 +219,8 @@ export default function WebSetup() {
   const handleSliderFileChange = (/** @type {any} */ e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setSliderForm(/** @type {any} */ (prev => ({ ...prev, image_file: file, image_preview: URL.createObjectURL(file) })));
+    // FIXED: Applied JSDoc directly to the `prev` parameter
+    setSliderForm((/** @type {any} */ prev) => ({ ...prev, image_file: file, image_preview: URL.createObjectURL(file) }));
   };
 
   const filteredSliders = sliders.filter((/** @type {any} */ s) => 
@@ -418,7 +421,7 @@ export default function WebSetup() {
                           ) : (
                             <div className="w-full h-32 flex flex-col items-center justify-center text-slate-400 mb-3"><ImageIcon size={32} className="mb-2" /><p className="text-sm">No banner image uploaded</p></div>
                           )}
-                          {/* FIXED: JSDoc Inline Parameter Typing for TypeScript */}
+                          {/* FIXED: Applied JSDoc directly to the `p` parameter */}
                           <input type="file" accept="image/*" onChange={(e) => { const f = e.target.files?.[0]; if(f) setStoreForm((/** @type {any} */ p) => ({...p, promo_image_file: f, promo_image_preview: URL.createObjectURL(f)})) }} className="w-full text-sm text-slate-600 cursor-pointer" />
                         </div>
                       </div>
@@ -441,7 +444,7 @@ export default function WebSetup() {
                           ) : (
                             <div className="w-full h-32 flex flex-col items-center justify-center text-slate-400 mb-3"><ImageIcon size={32} className="mb-2" /><p className="text-sm">No image uploaded</p></div>
                           )}
-                          {/* FIXED: JSDoc Inline Parameter Typing for TypeScript */}
+                          {/* FIXED: Applied JSDoc directly to the `p` parameter */}
                           <input type="file" accept="image/*" onChange={(e) => { const f = e.target.files?.[0]; if(f) setStoreForm((/** @type {any} */ p) => ({...p, about_image_file: f, about_image_preview: URL.createObjectURL(f)})) }} className="w-full text-sm text-slate-600 cursor-pointer" />
                         </div>
                       </div>
