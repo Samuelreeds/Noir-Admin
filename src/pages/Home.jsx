@@ -59,9 +59,9 @@ export default function Home() {
   const bestSellers = products.filter((/** @type {any} */ p) => p.is_best_seller).slice(0, 6);
 
   // --- DYNAMIC HERO VARIABLES (With overrides for old database data) ---
-  let heroHeading = settings?.hero_heading || "WELCOME TO NOIR MTD";
+  let heroHeading = settings?.hero_heading || "WELCOME TO NOIR";
   if (heroHeading.includes("BARE") || heroHeading.includes("BEAUTY BEGINS")) {
-    heroHeading = "WELCOME TO NOIR MTD";
+    heroHeading = "WELCOME TO NOIR";
   }
 
   let heroSubheading = settings?.hero_subheading || "DISCOVER OUR LATEST COLLECTION.";
