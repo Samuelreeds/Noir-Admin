@@ -7,7 +7,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LogIn, Mail, Lock, Loader2 } from "lucide-react";
 import AuthLayout from "@/components/AuthLayout";
-import GoogleIcon from "@/components/GoogleIcon";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -15,10 +14,12 @@ export default function Login() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // 1. Detect Environment
+  // 1. Detect Environment & Route
   const hostname = window.location.hostname;
-  const isAdminDomain = hostname.startsWith('admin.') || hostname === 'admin.localhost';
   const isLocalDev = hostname === 'localhost' || hostname === '127.0.0.1';
+  
+  // CHECK ROUTE
+  const isAdminRoute = window.location.pathname.startsWith('/admin');
   
   // Refs for Telegram widget
   const telegramWrapperRef = useRef(null);
@@ -35,7 +36,8 @@ export default function Login() {
       });
       if (signInError) throw signInError;
       
-      window.location.href = "/";
+      // Redirect to /admin if they logged in from the admin login page
+      window.location.href = isAdminRoute ? "/admin" : "/";
     } catch (/** @type {any} */ err) {
       setError(err.message || "Invalid email or password");
     } finally {
@@ -43,26 +45,11 @@ export default function Login() {
     }
   };
 
-  const handleGoogle = async () => {
-    try {
-      await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: `${window.location.origin}/`,
-        },
-      });
-    } catch (/** @type {any} */ err) {
-      setError(err.message || "Failed to initialize Google login");
-    }
-  };
-
-  // --- UPDATED BACKEND VERIFICATION FLOW ---
   const handleTelegramSuccess = async (/** @type {any} */ user) => {
     setLoading(true);
     setError("");
     
     try {
-      // 1. Send Telegram payload to our secure Edge Function
       const { data, error: functionError } = await supabase.functions.invoke('telegram-auth', {
         body: { user }
       });
@@ -70,7 +57,6 @@ export default function Login() {
       if (functionError) throw functionError;
       if (data?.error) throw new Error(data.error);
 
-      // 2. Edge function verified the hash and generated a secure, temporary session credential
       const { error: signInError } = await supabase.auth.signInWithPassword({
         email: data.email,
         password: data.password,
@@ -78,7 +64,6 @@ export default function Login() {
 
       if (signInError) throw signInError;
       
-      // 3. Success! Redirect to homepage
       window.location.href = "/";
       
     } catch (err) {
@@ -88,11 +73,11 @@ export default function Login() {
     }
   };
 
-  // Inject the official Telegram Login Widget (Production Only)
   useEffect(() => {
     window.onTelegramAuth = handleTelegramSuccess;
 
-    if (!isAdminDomain && !isLocalDev && telegramWrapperRef.current && !isTelegramInjected.current) {
+    // Do not inject on Admin route
+    if (!isAdminRoute && !isLocalDev && telegramWrapperRef.current && !isTelegramInjected.current) {
       isTelegramInjected.current = true;
       
       const script = document.createElement("script");
@@ -107,16 +92,16 @@ export default function Login() {
       
       telegramWrapperRef.current.appendChild(script);
     }
-  }, [isAdminDomain, isLocalDev]);
+  }, [isAdminRoute, isLocalDev]);
 
   return (
     <AuthLayout
       icon={LogIn}
       title="Welcome back"
-      subtitle={isAdminDomain ? "Admin Portal Login" : "Log in to your account"}
-      hideBackLink={isAdminDomain}
+      subtitle={isAdminRoute ? "Admin Portal Login" : "Log in to your account"}
+      hideBackLink={isAdminRoute}
       footer={
-        !isAdminDomain ? (
+        !isAdminRoute ? (
           <>
             Don't have an account?{" "}
             <Link to="/register" className="text-primary font-medium hover:underline">
@@ -126,19 +111,9 @@ export default function Login() {
         ) : null
       }
     >
-      {!isAdminDomain && (
+      {!isAdminRoute && (
         <>
           <div className="space-y-4 mb-6 flex flex-col items-center w-full">
-            <Button
-              variant="outline"
-              className="w-full h-12 text-sm font-medium"
-              onClick={handleGoogle}
-              disabled={loading}
-            >
-              <GoogleIcon className="w-5 h-5 mr-2" />
-              Continue with Google
-            </Button>
-
             {isLocalDev ? (
               <div 
                 className={`relative w-full h-12 overflow-hidden rounded-md border border-input bg-background transition-colors flex items-center justify-center text-sm font-medium ${loading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-accent hover:text-accent-foreground cursor-pointer'}`}
@@ -196,7 +171,7 @@ export default function Login() {
         </div>
       )}
 
-      {/* The email/password form is now visible for everyone again */}
+      {/* Email form is now rendered unconditionally for both Admin and Customer views */}
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="space-y-2">
           <Label htmlFor="email">Email</Label>
