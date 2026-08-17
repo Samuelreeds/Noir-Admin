@@ -140,9 +140,21 @@ export default function Orders() {
   const exportToCSV = () => {
     const dataToExport = selectedOrderIds.length > 0 ? filteredOrders.filter((/** @type {any} */ o) => selectedOrderIds.includes(o.id)) : filteredOrders;
     if (dataToExport.length === 0) return alert("No data to export!");
-    const headers = ['Order ID', 'Date', 'Customer Name', 'Phone', 'Location', 'Address', 'Total Items', 'Payment', 'Currency', 'Status', 'Grand Total'];
+    
+    // Updated Headers to include Products
+    const headers = ['Order ID', 'Date', 'Customer Name', 'Phone', 'Location', 'Address', 'Products Ordered', 'Total Quantity', 'Payment', 'Currency', 'Status', 'Grand Total'];
+    
     const rows = dataToExport.map((/** @type {any} */ order) => {
       const addr = order.shipping_address || {};
+      
+      // Calculate total quantity of physical items
+      const totalQuantity = order.order_items?.reduce((/** @type {number} */ sum, /** @type {any} */ item) => sum + (item.quantity || 1), 0) || 0;
+      
+      // Build a readable string of the products ordered
+      const productsList = order.order_items?.map((/** @type {any} */ item) => 
+        `${item.product_name} (${item.selected_color}/${item.selected_size}) x${item.quantity}`
+      ).join(' | ') || 'No items';
+
       return [ 
         `MA-${order.id.slice(-8).toUpperCase()}`, 
         new Date(order.created_at).toLocaleDateString(), 
@@ -150,13 +162,15 @@ export default function Orders() {
         addr.phone || 'N/A', 
         addr.province || 'N/A', 
         addr.address || 'N/A', 
-        order.order_items?.length || 0, 
+        productsList,
+        totalQuantity, 
         order.payment_method === 'qr' ? 'Bank / QR' : order.payment_method, 
         order.currency || 'USD',
         order.status, 
         order.grand_total || 0 
       ].map(field => `"${String(field).replace(/"/g, '""')}"`).join(',');
     });
+    
     const blob = new Blob([[headers.join(','), ...rows].join('\n')], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.setAttribute('download', `orders_export_${new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link); link.click(); document.body.removeChild(link);
@@ -164,11 +178,12 @@ export default function Orders() {
 
   const openViewModal = (/** @type {any} */ order) => { setSelectedOrder(order); setIsViewModalOpen(true); };
   
-  const closeModals = () => { setIsViewModalOpen(false); setSelectedOrder(null); setPrintMode(null); };
+  const closeModals = () => { setIsViewModalOpen(false); setPrintMode(null); setTimeout(() => setSelectedOrder(null), 200); };
   
   const handlePrint = (/** @type {any} */ order, /** @type {'label' | 'receipt'} */ mode) => {
     setSelectedOrder(order);
     setPrintMode(mode);
+    // Timeout allows the React component for the print template to mount before triggering browser print
     setTimeout(() => {
       window.print();
     }, 100);
@@ -447,8 +462,9 @@ export default function Orders() {
                           ))
                         ) : (
                           <tr>
-                            <td colSpan={5} className="px-6 py-8 text-center text-slate-500 text-sm">
-                              No items found for this order.
+                            <td colSpan={5} className="px-6 py-8 text-center text-slate-500 bg-slate-50">
+                              <p className="font-semibold text-sm">No items found for this order.</p>
+                              <p className="text-xs mt-1 max-w-sm mx-auto">This order was saved without products. There is likely an issue in your Checkout logic preventing cart items from being saved to the database.</p>
                             </td>
                           </tr>
                         )}

@@ -35,32 +35,49 @@ export default function CartDrawer() {
         ) : (
           <>
             <div className="flex-1 overflow-y-auto px-6">
-              {items.map((item) => (
-                <div key={item.key} className="flex gap-4 py-5 border-b hairline">
-                  <div className="w-20 h-24 bg-muted shrink-0 overflow-hidden">
-                    {item.image && <Image src={item.image} alt={item.name} className="w-full h-full" fittingType="fill" />}
-                  </div>
-                  <div className="flex-1 flex flex-col">
-                    <div className="flex justify-between gap-2">
-                      <h3 className="text-sm font-medium leading-snug">{item.name}</h3>
-                      <button onClick={() => removeItem(item.key)} className="text-muted-foreground hover:text-foreground shrink-0" aria-label="Remove">
-                        <X size={14} strokeWidth={1.5} />
-                      </button>
+              {items.map((item) => {
+                // Check if the current quantity has reached the maximum stock limit[cite: 5]
+                const isMaxStockReached = item.max_stock != null && item.quantity >= item.max_stock;
+
+                return (
+                  <div key={item.key} className="flex gap-4 py-5 border-b hairline">
+                    <div className="w-20 h-24 bg-muted shrink-0 overflow-hidden">
+                      {item.image && <Image src={item.image} alt={item.name} className="w-full h-full" fittingType="fill" />}
                     </div>
-                    <p className="label-mono text-muted-foreground mt-1">
-                      {item.color} · {item.size}
-                    </p>
-                    <div className="mt-auto flex items-center justify-between pt-3">
-                      <div className="flex items-center border hairline">
-                        <button onClick={() => updateQty(item.key, item.quantity - 1)} className="px-2 py-1 hover:bg-muted" aria-label="Decrease"><Minus size={12} /></button>
-                        <span className="px-3 font-mono text-xs">{item.quantity}</span>
-                        <button onClick={() => updateQty(item.key, item.quantity + 1)} className="px-2 py-1 hover:bg-muted" aria-label="Increase"><Plus size={12} /></button>
+                    <div className="flex-1 flex flex-col">
+                      <div className="flex justify-between gap-2">
+                        <h3 className="text-sm font-medium leading-snug">{item.name}</h3>
+                        <button onClick={() => removeItem(item.key)} className="text-muted-foreground hover:text-foreground shrink-0" aria-label="Remove">
+                          <X size={14} strokeWidth={1.5} />
+                        </button>
                       </div>
-                      <span className="font-mono text-sm">${(item.price * item.quantity).toFixed(2)}</span>
+                      <p className="label-mono text-muted-foreground mt-1">
+                        {item.color} · {item.size}
+                      </p>
+                      
+                      {isMaxStockReached && (
+                        <p className="text-[10px] text-amber-600 font-medium mt-1">Maximum stock reached</p>
+                      )}
+
+                      <div className="mt-auto flex items-center justify-between pt-3">
+                        <div className="flex items-center border hairline">
+                          <button onClick={() => updateQty(item.key, item.quantity - 1)} className="px-2 py-1 hover:bg-muted" aria-label="Decrease"><Minus size={12} /></button>
+                          <span className="px-3 font-mono text-xs">{item.quantity}</span>
+                          <button 
+                            onClick={() => updateQty(item.key, item.quantity + 1)} 
+                            disabled={isMaxStockReached}
+                            className="px-2 py-1 hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed" 
+                            aria-label="Increase"
+                          >
+                            <Plus size={12} />
+                          </button>
+                        </div>
+                        <span className="font-mono text-sm">${(item.price * item.quantity).toFixed(2)}</span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             <div className="border-t hairline px-6 py-5 space-y-3">

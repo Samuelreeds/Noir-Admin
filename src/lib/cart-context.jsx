@@ -15,7 +15,6 @@ const load = (/** @type {string} */ key, /** @type {any} */ fallback) => {
  * @param {{ children: React.ReactNode }} props 
  */
 export function CartProvider({ children }) {
-  // FIX: Moved the JSDoc cast inside the arrow function so it casts the return value, not the function itself
   const [items, setItems] = useState(() => /** @type {any[]} */ (load("atelier_cart", [])));
   const [wishlist, setWishlist] = useState(() => /** @type {string[]} */ (load("atelier_wishlist", [])));
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -31,7 +30,7 @@ export function CartProvider({ children }) {
     if (!cartExpiresAt || items.length === 0) return;
 
     const interval = setInterval(() => {
-      if (Date.now() > parseInt(cartExpiresAt, 1)) {
+      if (Date.now() > parseInt(cartExpiresAt, 10)) {
         // Cart Expired! Wipe everything.
         setItems([]);
         setCartExpiresAt(null);
@@ -49,13 +48,17 @@ export function CartProvider({ children }) {
   const openDrawer = useCallback(() => setDrawerOpen(true), []);
   const closeDrawer = useCallback(() => setDrawerOpen(false), []);
 
-  const addItem = useCallback((/** @type {any} */ product, /** @type {any} */ { size, color, quantity = 1 }) => {
+  const addItem = useCallback((/** @type {any} */ product, /** @type {any} */ { size, color, quantity = 1, max_stock = product.inventory ?? product.stock ?? Infinity }) => {
     setItems((/** @type {any[]} */ prev) => {
       const key = `${product.id}|${size}|${color}`;
       const existing = prev.find((i) => i.key === key);
+      
       if (existing) {
-        return prev.map((i) => i.key === key ? { ...i, quantity: i.quantity + quantity } : i);
+        // Enforce max stock limit when adding to existing items[cite: 4]
+        const newQty = Math.min(existing.quantity + quantity, existing.max_stock ?? max_stock);
+        return prev.map((i) => i.key === key ? { ...i, quantity: newQty } : i);
       }
+      
       return [...prev, {
         key,
         product_id: product.id,
@@ -65,7 +68,8 @@ export function CartProvider({ children }) {
         image: product.images?.[0],
         size,
         color,
-        quantity,
+        quantity: Math.min(quantity, max_stock), // Enforce limit on initial add[cite: 4]
+        max_stock, // Store the limit for future cart updates[cite: 4]
       }];
     });
 
@@ -90,12 +94,18 @@ export function CartProvider({ children }) {
   }, []);
 
   const updateQty = useCallback((/** @type {string} */ key, /** @type {number} */ quantity) => {
-    setItems((/** @type {any[]} */ prev) => prev.map((i) => i.key === key ? { ...i, quantity: Math.max(1, quantity) } : i));
+    setItems((/** @type {any[]} */ prev) => prev.map((i) => {
+      if (i.key === key) {
+        // Clamp quantity between 1 and the maximum available stock[cite: 4]
+        const max = i.max_stock ?? Infinity;
+        return { ...i, quantity: Math.max(1, Math.min(quantity, max)) };
+      }
+      return i;
+    }));
   }, []);
 
   const clearCart = useCallback(() => {
     setItems([]);
-    // Clear timer
     setCartExpiresAt(null);
     localStorage.removeItem("atelier_cart_expires_at");
   }, []);
