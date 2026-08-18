@@ -43,11 +43,21 @@ import Login from '@/pages/Login';
 import Register from '@/pages/Register';
 import ForgotPassword from '@/pages/ForgotPassword';
 
-// --- ADMIN EMAILS LIST (Fetched from .env) ---
+// --- ADMIN EMAILS BULLETPROOF CHECK ---
+// We hardcode the primary admins so it NEVER fails, and merge it with .env variables.
+const HARDCODED_ADMINS = [
+  'jackstyle4@gmail.com',
+  'noirmtd@gmail.com',
+  'admin@testing.com'
+];
+
 const getAdminEmails = () => {
   const envEmails = import.meta.env.VITE_ADMIN_EMAILS || "";
-  return envEmails.split(',').map(email => email.trim().toLowerCase()).filter(Boolean);
+  const parsedEnv = envEmails.split(',').map(email => email.trim().toLowerCase()).filter(Boolean);
+  // Merge hardcoded and env emails, removing duplicates
+  return [...new Set([...HARDCODED_ADMINS, ...parsedEnv])];
 };
+
 const ADMIN_EMAILS = getAdminEmails();
 
 const AuthenticatedApp = () => {
@@ -70,14 +80,16 @@ const AuthenticatedApp = () => {
     }
   }
 
-  // --- CHECK IF LOGGED-IN USER IS AN ADMIN ---
-  const userEmail = user?.email?.toLowerCase().trim();
-  const isRoleAdmin = user?.user_metadata?.role === 'admin'; 
-  const isAdmin = user && ((userEmail && ADMIN_EMAILS.includes(userEmail)) || isRoleAdmin);
+  // --- STRICT ADMIN VERIFICATION ---
+  // Depending on how AuthContext is written, user might be { email: ... } or { user: { email: ... } }
+  const currentUser = user?.email ? user : user?.user;
+  const userEmail = currentUser?.email?.toLowerCase().trim();
+  const isRoleAdmin = currentUser?.user_metadata?.role === 'admin' || currentUser?.role === 'admin'; 
+  const isAdmin = currentUser && ((userEmail && ADMIN_EMAILS.includes(userEmail)) || isRoleAdmin);
 
   // =================================================================
   // 1. STRICT ADMIN ROUTING
-  // If the user is an admin, they can ONLY access the Admin Dashboard.
+  // If you are an admin, the customer storefront is deleted from your session.
   // =================================================================
   if (isAdmin) {
     return (
@@ -98,9 +110,7 @@ const AuthenticatedApp = () => {
           <Route path="web-setup" element={<AdminWebSetup />} />
         </Route>
         
-        {/* If the admin logs in and AuthContext tries to force them to /account, 
-            or if they try to visit the storefront, this instantly intercepts 
-            them and forces them back into the admin dashboard. */}
+        {/* Force admins back to dashboard if they try to access /account or / */}
         <Route path="*" element={<Navigate to="/admin" replace />} />
       </Routes>
     );
