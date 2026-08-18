@@ -1,3 +1,25 @@
+/* 
+  If you are using Adobe Fonts (Typekit), you can import it here, 
+  OR add the <link> tag to your public/index.html file.
+  @import url("https://use.typekit.net/YOUR_PROJECT_ID.css"); 
+*/
+
+/* 
+  If you are using LOCAL font files, uncomment and use this block:
+  @font-face {
+    font-family: 'Futura PT';
+    src: url('/fonts/FuturaPT-Book.woff2') format('woff2');
+    font-weight: 400;
+    font-style: normal;
+  }
+  @font-face {
+    font-family: 'Futura PT';
+    src: url('/fonts/FuturaPT-Demi.woff2') format('woff2');
+    font-weight: 600;
+    font-style: normal;
+  }
+*/
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -24,10 +46,13 @@
     --input: 0 0% 85%;
     --ring: 0 0% 32%;
     --radius: 0px;
-    --font-heading: 'Inter Tight', ui-sans-serif, system-ui, sans-serif;
-    --font-body: 'Inter', ui-sans-serif, system-ui, sans-serif;
-    --font-display: 'Inter Tight', ui-sans-serif, system-ui, sans-serif;
-    --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+    
+    /* ALL FONTS NOW POINT TO FUTURA PT */
+    --font-heading: 'Futura PT', Futura, ui-sans-serif, system-ui, sans-serif;
+    --font-body: 'Futura PT', Futura, ui-sans-serif, system-ui, sans-serif;
+    --font-display: 'Futura PT', Futura, ui-sans-serif, system-ui, sans-serif;
+    --font-mono: 'Futura PT', Futura, ui-sans-serif, system-ui, sans-serif;
+    
     --obsidian: #050505;
     --titanium: #ffffff;
     --charcoal: #262626;

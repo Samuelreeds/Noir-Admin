@@ -1,11 +1,35 @@
+// @ts-nocheck
 import React, { useState } from "react";
 import { Mail, Phone, MapPin, ArrowRight } from "lucide-react";
 import Reveal from "@/components/store/Reveal";
+import { supabase } from "@/lib/supabase";
+import { useQuery } from '@tanstack/react-query';
 
 export default function Contact() {
   const [form, setForm] = useState({ name: "", email: "", subject: "", message: "" });
   const [sent, setSent] = useState(false);
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  // Fetch dynamic content from store_settings including contact_address
+  const { data: settings } = useQuery({
+    queryKey: ['store-settings-contact'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('store_settings')
+        .select('contact_email, contact_phone, contact_address')
+        .eq('id', 1)
+        .single();
+      
+      if (error && error.code !== 'PGRST116') throw error;
+      return /** @type {any} */ (data || {});
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Dynamic Fallbacks
+  const displayEmail = settings?.contact_email || "concierge@monolithic.atelier";
+  const displayPhone = settings?.contact_phone || "+1 (000) 000-0000";
+  const displayAddress = settings?.contact_address || "No. 1 Obsidian Square, Titanium District"; 
 
   const submit = (e) => {
     e.preventDefault();
@@ -35,15 +59,15 @@ export default function Contact() {
           </Reveal>
           <div className="space-y-6">
             {[
-              { icon: Mail, label: "Email", value: "concierge@monolithic.atelier" },
-              { icon: Phone, label: "Telephone", value: "+1 (000) 000-0000" },
-              { icon: MapPin, label: "Atelier", value: "No. 1 Obsidian Square, Titanium District" },
+              { icon: Mail, label: "Email", value: displayEmail },
+              { icon: Phone, label: "Telephone", value: displayPhone },
+              { icon: MapPin, label: "Atelier", value: displayAddress },
             ].map((c, i) => (
               <Reveal key={c.label} delay={i * 80} className="flex items-start gap-4 border-b hairline pb-6">
                 <c.icon size={18} strokeWidth={1.5} className="mt-1 shrink-0" />
                 <div>
                   <p className="label-mono text-muted-foreground text-[10px] mb-1">{c.label}</p>
-                  <p className="text-sm font-mono">{c.value}</p>
+                  <p className="text-sm font-mono whitespace-pre-wrap">{c.value}</p>
                 </div>
               </Reveal>
             ))}
