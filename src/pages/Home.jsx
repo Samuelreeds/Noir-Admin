@@ -1,6 +1,7 @@
+// @ts-nocheck
 import React, { useEffect, useState, useRef } from "react";
 import { Link } from "react-router-dom";
-import { ArrowRight, ArrowUpRight } from "lucide-react";
+import { ArrowRight, ArrowUpRight, X } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { Image as BaseImage } from "@/components/ui/image";
 import Reveal from "@/components/store/Reveal";
@@ -29,23 +30,39 @@ export default function Home() {
   const rackRef = useRef(/** @type {any} */ (null));
   
   const [currentSlide, setCurrentSlide] = useState(0);
+  
+  // AD MODAL STATES
+  const [activeAd, setActiveAd] = useState(/** @type {any} */ (null));
+  const [showAdModal, setShowAdModal] = useState(false);
 
   useEffect(() => {
     (async () => {
       try {
-        const [prodRes, settingsRes, slidersRes, catRes] = await Promise.all([
+        const [prodRes, settingsRes, slidersRes, catRes, adRes] = await Promise.all([
           supabase.from("products").select("*").neq("status", "archived").order("created_at", { ascending: false }).limit(60),
           supabase.from("store_settings").select("*").eq("id", 1).single(),
           supabase.from("sliders").select("*").eq("status", true).order("ordering", { ascending: true }),
-          supabase.from("categories").select("*").eq("status", true).order("ordering", { ascending: true })
+          supabase.from("categories").select("*").eq("status", true).order("ordering", { ascending: true }),
+          // Fetch the first active advertisement from the advertisements table
+          supabase.from("advertisements").select("*").eq("status", "active").order("ordering", { ascending: true }).limit(1)
         ]);
 
         if (prodRes.data) setProducts(prodRes.data);
         if (slidersRes.data) setSliders(slidersRes.data);
         if (catRes.data) setDbCategories(catRes.data);
+        if (adRes.data && adRes.data.length > 0) setActiveAd(adRes.data[0]);
         
         if (settingsRes.error) console.error("Store Settings Fetch Error:", settingsRes.error);
-        if (settingsRes.data) setSettings(settingsRes.data);
+        if (settingsRes.data) {
+          setSettings(settingsRes.data);
+          
+          // Trigger Ad Modal if globally enabled AND an active ad exists AND user hasn't seen it yet this session
+          if (settingsRes.data.ad_modal_enabled && adRes.data && adRes.data.length > 0 && !sessionStorage.getItem('noir_ad_seen')) {
+            setTimeout(() => {
+              setShowAdModal(true);
+            }, 2000); // 2-second delay so it's less aggressive
+          }
+        }
 
       } catch (e) {
         console.error("Error loading home data:", e);
@@ -54,20 +71,20 @@ export default function Home() {
     })();
   }, []);
 
+  const closeAdModal = () => {
+    setShowAdModal(false);
+    sessionStorage.setItem('noir_ad_seen', 'true');
+  };
+
   const featured = products.filter((/** @type {any} */ p) => p.featured).slice(0, 8);
   const newArrivals = products.filter((/** @type {any} */ p) => p.is_new).slice(0, 6);
   const bestSellers = products.filter((/** @type {any} */ p) => p.is_best_seller).slice(0, 6);
 
-  // --- DYNAMIC HERO VARIABLES (With overrides for old database data) ---
+  // --- DYNAMIC HERO VARIABLES ---
   let heroHeading = settings?.hero_heading || "WELCOME TO NOIR";
-  if (heroHeading.includes("BARE") || heroHeading.includes("BEAUTY BEGINS")) {
-    heroHeading = "WELCOME TO NOIR";
-  }
-
+  if (heroHeading.includes("BARE") || heroHeading.includes("BEAUTY BEGINS")) heroHeading = "WELCOME TO NOIR";
   let heroSubheading = settings?.hero_subheading || "DISCOVER OUR LATEST COLLECTION.";
-  if (heroSubheading.includes("HIGH QUALITY")) {
-    heroSubheading = "DISCOVER OUR LATEST COLLECTION.";
-  }
+  if (heroSubheading.includes("HIGH QUALITY")) heroSubheading = "DISCOVER OUR LATEST COLLECTION.";
 
   const promoHeading = settings?.promo_heading || "The Signature Glow Series.";
   const promoSubheading = settings?.promo_subheading || "The Skin-First Approach";
@@ -85,9 +102,7 @@ export default function Home() {
 
   useEffect(() => {
     if (activeSliders.length <= 1) return;
-    const timer = setInterval(() => {
-      setCurrentSlide((prev) => (prev + 1) % activeSliders.length);
-    }, 5000);
+    const timer = setInterval(() => setCurrentSlide((prev) => (prev + 1) % activeSliders.length), 5000);
     return () => clearInterval(timer);
   }, [activeSliders.length]);
 
@@ -272,6 +287,46 @@ export default function Home() {
       {loading && (
         <div className="py-32 flex items-center justify-center">
           <div className="w-6 h-6 border border-foreground border-t-transparent rounded-full animate-spin" />
+        </div>
+      )}
+
+      {/* --- DYNAMIC ADVERTISEMENT MODAL (Fetched from 'advertisements' table) --- */}
+      {showAdModal && activeAd && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div 
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" 
+            onClick={closeAdModal} 
+          />
+          <div className="relative z-10 w-full max-w-[450px] bg-background shadow-2xl animate-in fade-in zoom-in-95 duration-500 overflow-hidden border hairline flex flex-col">
+            
+            <button 
+              onClick={closeAdModal}
+              className="absolute top-4 right-4 z-20 w-8 h-8 flex items-center justify-center bg-white/20 hover:bg-white/40 backdrop-blur-md text-white rounded-full transition-colors"
+              aria-label="Close Advertisement"
+            >
+              <X size={18} strokeWidth={2} />
+            </button>
+            
+            {activeAd.image && (
+              <Link to={activeAd.redirect_to || '/shop'} onClick={closeAdModal} className="block w-full relative aspect-[4/3] bg-muted">
+                <Image src={activeAd.image} alt={activeAd.title || "Advertisement"} className="w-full h-full object-cover" fittingType="cover" />
+              </Link>
+            )}
+            
+            {(activeAd.title || activeAd.subtitle || activeAd.redirect_label) && (
+              <div className="p-8 text-center flex flex-col items-center justify-center bg-white">
+                {activeAd.title && <h2 className="font-display text-2xl md:text-3xl tracking-[-0.03em] uppercase mb-2">{activeAd.title}</h2>}
+                {activeAd.subtitle && <p className="text-muted-foreground text-sm mb-6">{activeAd.subtitle}</p>}
+                
+                {activeAd.redirect_label && (
+                  <Link to={activeAd.redirect_to || '/shop'} onClick={closeAdModal} className="inline-block bg-black text-white px-8 py-3 label-mono text-xs uppercase tracking-widest transition-transform hover:scale-105">
+                    {activeAd.redirect_label}
+                  </Link>
+                )}
+              </div>
+            )}
+            
+          </div>
         </div>
       )}
     </div>

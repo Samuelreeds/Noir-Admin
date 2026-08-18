@@ -24,6 +24,22 @@ export default function About() {
     staleTime: 5 * 60 * 1000,
   });
 
+  // Fetch active events (Now serving as Past Archives)
+  const { data: events = [] } = useQuery({
+    queryKey: ['store-events'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('events')
+        .select('*')
+        .eq('status', true)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return data || [];
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
   // Fallbacks for Hero
   const heading = settings?.about_heading || "Not a store.\nAn atelier.";
   const text = settings?.about_text || "MONOLITHIC ATELIER is a digital architectural statement for the future of luxury commerce. We do not build storefronts — we engineer high-fidelity galleries where every garment is treated as a masterwork.";
@@ -32,21 +48,9 @@ export default function About() {
   // Fallbacks for Principles
   const principlesHeading = settings?.about_principles_heading || "Structural Minimalism.";
   const principles = [
-    { 
-      n: "01", 
-      t: settings?.about_p1_title || "Visible Architecture", 
-      d: settings?.about_p1_desc || "Hairline borders define every section, creating a blueprint-like aesthetic that honors the structure of each garment." 
-    },
-    { 
-      n: "02", 
-      t: settings?.about_p2_title || "Material Inertia", 
-      d: settings?.about_p2_desc || "Interactions follow the laws of physical mass. Elements slide into place with weighted ease, suggesting premium craftsmanship." 
-    },
-    { 
-      n: "03", 
-      t: settings?.about_p3_title || "Curated Restraint", 
-      d: settings?.about_p3_desc || "The power of negative space. We avoid clutter, allowing each object the room to command attention." 
-    },
+    { n: "01", t: settings?.about_p1_title || "Visible Architecture", d: settings?.about_p1_desc || "Hairline borders define every section, creating a blueprint-like aesthetic that honors the structure of each garment." },
+    { n: "02", t: settings?.about_p2_title || "Material Inertia", d: settings?.about_p2_desc || "Interactions follow the laws of physical mass. Elements slide into place with weighted ease, suggesting premium craftsmanship." },
+    { n: "03", t: settings?.about_p3_title || "Curated Restraint", d: settings?.about_p3_desc || "The power of negative space. We avoid clutter, allowing each object the room to command attention." },
   ];
 
   // Fallbacks for CTA
@@ -96,6 +100,43 @@ export default function About() {
           </div>
         </div>
       </section>
+
+      {/* Dynamic Events (Archive) */}
+      {events.length > 0 && (
+        <section className="py-16 md:py-24 border-t hairline">
+          <div className="max-w-[1400px] mx-auto px-4 md:px-8">
+            <Reveal className="mb-12">
+              <p className="label-mono text-muted-foreground mb-3">— Archive</p>
+              <h2 className="font-display text-4xl md:text-6xl tracking-[-0.04em]">Past Exhibitions & Pop-Ups.</h2>
+            </Reveal>
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8 md:gap-12">
+              {events.map((ev, i) => (
+                <Reveal key={ev.id} delay={i * 80} className="group cursor-pointer">
+                  {/* CHANGED: aspect-[4/3] is now aspect-[4/5] to perfectly fit 2160x2700 px */}
+                  <div className="aspect-[4/5] bg-muted mb-6 overflow-hidden relative border hairline">
+                    {ev.image_url ? (
+                      <Image src={ev.image_url} alt={ev.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" fittingType="cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center bg-slate-50 text-slate-400">NO IMAGE</div>
+                    )}
+                  </div>
+                  
+                  {(ev.event_date || ev.location) && (
+                    <div className="flex items-center gap-3 text-[11px] font-mono text-muted-foreground mb-3 uppercase tracking-wider">
+                      {ev.event_date && <span>{ev.event_date}</span>}
+                      {ev.event_date && ev.location && <span>·</span>}
+                      {ev.location && <span>{ev.location}</span>}
+                    </div>
+                  )}
+                  
+                  <h3 className="font-display text-2xl tracking-[-0.03em] mb-3">{ev.title}</h3>
+                  <p className="text-sm text-muted-foreground line-clamp-3 leading-relaxed whitespace-pre-wrap">{ev.description}</p>
+                </Reveal>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* CTA */}
       <section className="border-t hairline py-20 md:py-32 text-center px-6">

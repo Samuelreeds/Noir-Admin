@@ -1,7 +1,7 @@
 // @ts-nocheck
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Save, Image as ImageIcon, RefreshCcw, CheckCircle, X, UploadCloud, Search, Plus, Edit, Trash2 } from 'lucide-react';
+import { Save, Image as ImageIcon, RefreshCcw, CheckCircle, X, UploadCloud, Search, Plus, Edit, Trash2, Calendar } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
@@ -16,7 +16,7 @@ const processImageToWebP = (/** @type {File} */ file) => {
       img.src = /** @type {string} */ (event.target?.result);
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 2000; const MAX_HEIGHT = 1000;
+        const MAX_WIDTH = 2500; const MAX_HEIGHT = 2500;
         let { width, height } = img;
         if (width > height && width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; } 
         else if (height > MAX_HEIGHT) { width *= MAX_HEIGHT / height; height = MAX_HEIGHT; }
@@ -45,9 +45,6 @@ const uploadAssetToSupabase = async (/** @type {File} */ file, /** @type {string
 };
 
 // --- REUSABLE TOGGLE SWITCH ---
-/**
- * @param {{ checked: boolean, onChange: (val: boolean) => void, label?: string }} props
- */
 const ToggleSwitch = ({ checked, onChange, label = '' }) => (
   <label className="inline-flex items-center cursor-pointer shrink-0">
     {label && <span className="mr-3 text-sm font-medium text-slate-700 whitespace-nowrap select-none">{label}</span>}
@@ -68,6 +65,12 @@ export default function WebSetup() {
   const [deleteSliderId, setDeleteSliderId] = useState(/** @type {string | null} */ (null));
   const [saveSuccess, setSaveSuccess] = useState(false);
 
+  // --- EVENTS STATE ---
+  const defaultEventForm = { id: null, title: '', event_date: '', location: '', description: '', image_url: '', image_file: null, image_preview: '', status: true };
+  const [eventForm, setEventForm] = useState(defaultEventForm);
+  const [showEventModal, setShowEventModal] = useState(false);
+  const [deleteEventId, setDeleteEventId] = useState(null);
+
   const defaultStoreForm = {
     hero_heading: 'WELCOME TO NOIR MTD', hero_subheading: 'DISCOVER OUR LATEST COLLECTION.',
     hero_button_text: 'SHOP NOW', hero_button_link: '/shop',
@@ -85,20 +88,10 @@ export default function WebSetup() {
     contact_email: '', contact_phone: '', social_instagram: '', contact_address: '',
     store_genders: 'Men, Women, Unisex',
     shipping_pp_price: '1.50', shipping_province_price: '2.50', enable_tax: false, tax_rate: '8.00',
-    
-    // NEW AD MODAL FIELDS
-    ad_modal_enabled: false,
-    ad_modal_image: '',
-    ad_modal_image_file: /** @type {File | null} */ (null),
-    ad_modal_image_preview: '',
-    ad_modal_link: '/shop'
+    ad_modal_enabled: false, ad_modal_image: '', ad_modal_image_file: null, ad_modal_image_preview: '', ad_modal_link: '/shop'
   };
 
-  const defaultSliderForm = {
-    id: null, image_url: '', image_file: /** @type {File | null} */ (null), image_preview: '',
-    ordering: 0, status: true, cta_enabled: true,
-    cta_link: '/shop', cta_text_en: 'Shop Now', cta_text_kh: 'ទិញឥឡូវនេះ'
-  };
+  const defaultSliderForm = { id: null, image_url: '', image_file: null, image_preview: '', ordering: 0, status: true, cta_enabled: true, cta_link: '/shop', cta_text_en: 'Shop Now', cta_text_kh: 'ទិញឥឡូវនេះ' };
 
   const [storeForm, setStoreForm] = useState(defaultStoreForm);
   const [sliderForm, setSliderForm] = useState(defaultSliderForm);
@@ -121,9 +114,19 @@ export default function WebSetup() {
     }
   });
 
+  // Fetch Events
+  const { data: events = [] } = useQuery({
+    queryKey: ['admin-events'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('events').select('*').order('created_at', { ascending: false });
+      if (error) throw error;
+      return data || [];
+    }
+  });
+
   useEffect(() => {
     if (storeSettings && Object.keys(storeSettings).length > 0) {
-      setStoreForm((/** @type {any} */ prev) => ({
+      setStoreForm((prev) => ({
         ...prev, ...storeSettings,
         hero_heading: storeSettings.hero_heading || 'WELCOME TO NOIR MTD',
         hero_subheading: storeSettings.hero_subheading || 'DISCOVER OUR LATEST COLLECTION.',
@@ -151,8 +154,6 @@ export default function WebSetup() {
         shipping_province_price: storeSettings.shipping_province_price?.toString() ?? '2.50',
         enable_tax: !!storeSettings.enable_tax,
         tax_rate: storeSettings.tax_rate?.toString() ?? '8.00',
-        
-        // Populate Ad Modal Data
         ad_modal_enabled: !!storeSettings.ad_modal_enabled,
         ad_modal_image_preview: storeSettings.ad_modal_image || '',
         ad_modal_link: storeSettings.ad_modal_link || '/shop'
@@ -173,100 +174,96 @@ export default function WebSetup() {
 
       const payload = {
         id: 1,
-        hero_heading: storeForm.hero_heading, hero_subheading: storeForm.hero_subheading,
-        hero_button_text: storeForm.hero_button_text, hero_button_link: storeForm.hero_button_link,
+        hero_heading: storeForm.hero_heading, hero_subheading: storeForm.hero_subheading, hero_button_text: storeForm.hero_button_text, hero_button_link: storeForm.hero_button_link,
         about_heading: storeForm.about_heading, about_text: storeForm.about_text, about_image: aboutUrl,
-        about_principles_heading: storeForm.about_principles_heading,
-        about_p1_title: storeForm.about_p1_title, about_p1_desc: storeForm.about_p1_desc,
-        about_p2_title: storeForm.about_p2_title, about_p2_desc: storeForm.about_p2_desc,
-        about_p3_title: storeForm.about_p3_title, about_p3_desc: storeForm.about_p3_desc,
+        about_principles_heading: storeForm.about_principles_heading, about_p1_title: storeForm.about_p1_title, about_p1_desc: storeForm.about_p1_desc,
+        about_p2_title: storeForm.about_p2_title, about_p2_desc: storeForm.about_p2_desc, about_p3_title: storeForm.about_p3_title, about_p3_desc: storeForm.about_p3_desc,
         about_cta_heading: storeForm.about_cta_heading, about_cta_button_text: storeForm.about_cta_button_text, about_cta_button_link: storeForm.about_cta_button_link,
-        promo_heading: storeForm.promo_heading, promo_subheading: storeForm.promo_subheading, promo_image: promoUrl,
-        promo_button_text: storeForm.promo_button_text, promo_button_link: storeForm.promo_button_link,
+        promo_heading: storeForm.promo_heading, promo_subheading: storeForm.promo_subheading, promo_image: promoUrl, promo_button_text: storeForm.promo_button_text, promo_button_link: storeForm.promo_button_link,
         contact_email: storeForm.contact_email, contact_phone: storeForm.contact_phone, social_instagram: storeForm.social_instagram, contact_address: storeForm.contact_address,
-        genders: storeForm.store_genders.split(',').map(/** @type {(s: string) => string} */ (s => s.trim())).filter(Boolean),
+        genders: storeForm.store_genders.split(',').map(s => s.trim()).filter(Boolean),
         shipping_pp_price: parseFloat(storeForm.shipping_pp_price || '0'), shipping_province_price: parseFloat(storeForm.shipping_province_price || '0'),
         enable_tax: storeForm.enable_tax, tax_rate: parseFloat(storeForm.tax_rate || '0'),
-        
-        // Save Ad Modal Data
-        ad_modal_enabled: storeForm.ad_modal_enabled,
-        ad_modal_image: adModalUrl,
-        ad_modal_link: storeForm.ad_modal_link
+        ad_modal_enabled: storeForm.ad_modal_enabled, ad_modal_image: adModalUrl, ad_modal_link: storeForm.ad_modal_link
       };
 
       const { error } = await supabase.from('store_settings').upsert(payload);
       if (error) throw error;
       return payload;
     },
-    onSuccess: (/** @type {any} */ data) => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['admin-store-settings'] });
-      setStoreForm((/** @type {any} */ prev) => ({ 
-        ...prev, 
-        about_image_file: null, 
-        about_image: data.about_image,
-        promo_image_file: null,
-        promo_image: data.promo_image,
-        ad_modal_image_file: null,
-        ad_modal_image: data.ad_modal_image
-      }));
+      setStoreForm(prev => ({ ...prev, about_image_file: null, about_image: data.about_image, promo_image_file: null, promo_image: data.promo_image, ad_modal_image_file: null, ad_modal_image: data.ad_modal_image }));
       setSaveSuccess(true); setTimeout(() => setSaveSuccess(false), 3000);
     },
-    onError: (/** @type {any} */ err) => alert(err.message)
+    onError: (err) => alert(err.message)
   });
+
+  // --- EVENTS MUTATIONS ---
+  const saveEventMutation = useMutation({
+    mutationFn: async () => {
+      let imageUrl = eventForm.image_url;
+      if (eventForm.image_file) imageUrl = await uploadAssetToSupabase(eventForm.image_file, 'event');
+
+      const payload = {
+        title: eventForm.title, event_date: eventForm.event_date, location: eventForm.location,
+        description: eventForm.description, image_url: imageUrl, status: eventForm.status
+      };
+
+      if (eventForm.id) {
+        const { error } = await supabase.from('events').update(payload).eq('id', eventForm.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('events').insert([payload]);
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-events'] });
+      setShowEventModal(false);
+      setEventForm(defaultEventForm);
+    },
+    onError: (err) => alert(err.message)
+  });
+
+  const deleteEventMutation = useMutation({
+    mutationFn: async (id) => {
+      const { error } = await supabase.from('events').delete().eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-events'] });
+      setDeleteEventId(null);
+    }
+  });
+
+  const handleEventEdit = (ev) => {
+    setEventForm({ ...ev, image_file: null, image_preview: ev.image_url });
+    setShowEventModal(true);
+  };
 
   const saveSliderMutation = useMutation({
     mutationFn: async () => {
       if (!sliderForm.image_url && !sliderForm.image_file) throw new Error("An image is required.");
       let finalImageUrl = sliderForm.image_url;
       if (sliderForm.image_file) finalImageUrl = await uploadAssetToSupabase(sliderForm.image_file, 'slider');
-
-      const payload = {
-        image_url: finalImageUrl, ordering: parseInt(sliderForm.ordering.toString()) || 0,
-        status: sliderForm.status, cta_enabled: sliderForm.cta_enabled,
-        cta_link: sliderForm.cta_link, cta_text_en: sliderForm.cta_text_en, cta_text_kh: sliderForm.cta_text_kh
-      };
-
-      if (sliderForm.id) {
-        const { error } = await supabase.from('sliders').update(payload).eq('id', sliderForm.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.from('sliders').insert([payload]);
-        if (error) throw error;
-      }
+      const payload = { image_url: finalImageUrl, ordering: parseInt(sliderForm.ordering.toString()) || 0, status: sliderForm.status, cta_enabled: sliderForm.cta_enabled, cta_link: sliderForm.cta_link, cta_text_en: sliderForm.cta_text_en, cta_text_kh: sliderForm.cta_text_kh };
+      if (sliderForm.id) { const { error } = await supabase.from('sliders').update(payload).eq('id', sliderForm.id); if (error) throw error; } else { const { error } = await supabase.from('sliders').insert([payload]); if (error) throw error; }
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-sliders'] });
-      setSliderView('list');
-      setSliderForm(defaultSliderForm);
-    },
-    onError: (/** @type {any} */ err) => alert(err.message)
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin-sliders'] }); setSliderView('list'); setSliderForm(defaultSliderForm); },
+    onError: (err) => alert(err.message)
   });
 
   const deleteSliderMutation = useMutation({
-    mutationFn: async (/** @type {string} */ id) => {
-      const { error } = await supabase.from('sliders').delete().eq('id', id);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-sliders'] });
-      setDeleteSliderId(null);
-    }
+    mutationFn: async (id) => { const { error } = await supabase.from('sliders').delete().eq('id', id); if (error) throw error; },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin-sliders'] }); setDeleteSliderId(null); }
   });
 
-  const handleSliderEdit = (/** @type {any} */ slider) => {
-    setSliderForm({ ...defaultSliderForm, ...slider, image_preview: slider.image_url, image_file: null });
-    setSliderView('form');
-  };
+  const handleSliderEdit = (slider) => { setSliderForm({ ...defaultSliderForm, ...slider, image_preview: slider.image_url, image_file: null }); setSliderView('form'); };
 
-  const handleSliderFileChange = (/** @type {any} */ e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setSliderForm((/** @type {any} */ prev) => ({ ...prev, image_file: file, image_preview: URL.createObjectURL(file) }));
-  };
+  const handleSliderFileChange = (e) => { const file = e.target.files?.[0]; if (!file) return; setSliderForm(prev => ({ ...prev, image_file: file, image_preview: URL.createObjectURL(file) })); };
 
-  const filteredSliders = sliders.filter((/** @type {any} */ s) => 
-    s.id.toLowerCase().includes(searchQuery.toLowerCase()) || s.ordering.toString().includes(searchQuery)
-  );
+  const filteredSliders = sliders.filter(s => s.id.toLowerCase().includes(searchQuery.toLowerCase()) || s.ordering.toString().includes(searchQuery));
 
   if (isStoreLoading || isSlidersLoading) return <div className="p-10 flex justify-center"><RefreshCcw className="animate-spin text-slate-400" /></div>;
 
@@ -304,7 +301,7 @@ export default function WebSetup() {
                       {filteredSliders.length === 0 ? (
                         <tr><td colSpan={5} className="px-6 py-12 text-center text-slate-500">No sliders found.</td></tr>
                       ) : (
-                        filteredSliders.map((/** @type {any} */ slider, /** @type {number} */ index) => (
+                        filteredSliders.map((slider, index) => (
                           <tr key={slider.id} className="hover:bg-slate-50/50">
                             <td className="px-6 py-4 font-mono text-slate-600">{index + 1}</td>
                             <td className="px-6 py-4"><div className="h-14 w-32 bg-slate-100 border border-slate-200 rounded overflow-hidden"><img src={slider.image_url} alt="Thumbnail" className="w-full h-full object-cover" /></div></td>
@@ -475,6 +472,7 @@ export default function WebSetup() {
 
                 {activeTab === 'about' && (
                   <div className="space-y-12">
+                    
                     {/* Hero Section (Homepage Top) */}
                     <div className="space-y-6">
                       <h3 className="text-base font-bold text-slate-800 uppercase tracking-wide border-b border-slate-200 pb-2">Hero Section (Homepage Top)</h3>
@@ -504,9 +502,9 @@ export default function WebSetup() {
                       </div>
                     </div>
 
-                    {/* About Section - Top Header */}
+                    {/* About Section */}
                     <div className="space-y-6 pt-6 border-t border-slate-200">
-                      <h3 className="text-base font-bold text-slate-800 uppercase tracking-wide border-b border-slate-200 pb-2">About Page - Manifesto</h3>
+                      <h3 className="text-base font-bold text-slate-800 uppercase tracking-wide border-b border-slate-200 pb-2">About Us Section</h3>
                       <div>
                         <label className="block text-xs font-semibold text-slate-600 uppercase mb-3">About Image</label>
                         <div className="border-2 border-dashed border-slate-200 rounded-xl p-4 bg-slate-50 text-center w-full">
@@ -518,7 +516,7 @@ export default function WebSetup() {
                           <input type="file" accept="image/*" onChange={(e) => { const f = e.target.files?.[0]; if(f) setStoreForm((/** @type {any} */ p) => ({...p, about_image_file: f, about_image_preview: URL.createObjectURL(f)})) }} className="w-full text-sm text-slate-600 cursor-pointer" />
                         </div>
                       </div>
-                      <div><label className="block text-xs font-semibold text-slate-600 uppercase mb-2">About Heading</label><textarea value={storeForm.about_heading} onChange={e => setStoreForm({...storeForm, about_heading: e.target.value})} rows={2} className="w-full border border-slate-300 rounded p-3 text-sm outline-none" /></div>
+                      <div><label className="block text-xs font-semibold text-slate-600 uppercase mb-2">About Heading</label><input type="text" value={storeForm.about_heading} onChange={e => setStoreForm({...storeForm, about_heading: e.target.value})} className="w-full border border-slate-300 rounded p-3 text-sm outline-none" /></div>
                       <div><label className="block text-xs font-semibold text-slate-600 uppercase mb-2">About Text Paragraph</label><textarea value={storeForm.about_text} onChange={e => setStoreForm({...storeForm, about_text: e.target.value})} rows={5} className="w-full border border-slate-300 rounded p-3 text-sm outline-none resize-none" /></div>
                     </div>
 
@@ -546,6 +544,42 @@ export default function WebSetup() {
                       </div>
                     </div>
 
+                    {/* PAST EVENTS ARCHIVE */}
+                    <div className="space-y-6 pt-10 border-t border-slate-200">
+                      <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                        <div>
+                           <h3 className="text-base font-bold text-slate-800 uppercase tracking-wide">Past Events Archive</h3>
+                           <p className="text-xs text-slate-500 mt-1">These will appear at the bottom of the About page as a historical portfolio. (For active pop-ups, use the Advertisement tab).</p>
+                        </div>
+                        <button type="button" onClick={() => { setEventForm(defaultEventForm); setShowEventModal(true); }} className="flex items-center gap-2 px-3 py-1.5 bg-slate-900 text-white rounded text-xs font-medium hover:bg-slate-800 transition-colors">
+                          <Plus size={14} /> Add Past Event
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {events.length === 0 && <p className="text-sm text-slate-500 col-span-full text-center py-8 bg-slate-50 rounded-lg border border-slate-200 border-dashed">No events created yet.</p>}
+                        {events.map((ev) => (
+                          <div key={ev.id} className="border border-slate-200 rounded-lg overflow-hidden bg-white shadow-sm flex flex-col relative">
+                            <div className="h-32 bg-slate-100 relative">
+                              {ev.image_url ? <img src={ev.image_url} alt={ev.title} className="w-full h-full object-cover" /> : <div className="flex items-center justify-center h-full text-slate-400"><Calendar size={24} /></div>}
+                              <div className="absolute top-2 right-2 flex gap-1">
+                                <button onClick={() => handleEventEdit(ev)} className="w-7 h-7 bg-white rounded flex items-center justify-center shadow hover:text-slate-900 text-slate-500"><Edit size={14} /></button>
+                                <button onClick={() => setDeleteEventId(ev.id)} className="w-7 h-7 bg-white rounded flex items-center justify-center shadow hover:text-rose-600 text-slate-500"><Trash2 size={14} /></button>
+                              </div>
+                            </div>
+                            <div className="p-4">
+                              <div className="flex items-center justify-between mb-1">
+                                <h4 className="font-bold text-slate-900 truncate pr-2">{ev.title}</h4>
+                                <span className={`w-2 h-2 rounded-full shrink-0 ${ev.status ? 'bg-emerald-500' : 'bg-slate-300'}`} title={ev.status ? 'Active' : 'Inactive'} />
+                              </div>
+                              <p className="text-xs text-slate-500 font-mono mb-2">{ev.event_date || 'No date'} • {ev.location || 'No location'}</p>
+                              <p className="text-sm text-slate-600 line-clamp-2">{ev.description}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
                     {/* About Section - CTA */}
                     <div className="space-y-6 pt-6 border-t border-slate-200">
                       <h3 className="text-base font-bold text-slate-800 uppercase tracking-wide border-b border-slate-200 pb-2">About Page - Call To Action</h3>
@@ -566,15 +600,9 @@ export default function WebSetup() {
                       <div><label className="block text-xs font-semibold text-slate-600 uppercase mb-2">Support Phone</label><input type="text" value={storeForm.contact_phone} onChange={e => setStoreForm({...storeForm, contact_phone: e.target.value})} className="w-full border border-slate-300 rounded p-3 text-sm font-mono" /></div>
                     </div>
                     <div><label className="block text-xs font-semibold text-slate-600 uppercase mb-2">Instagram URL</label><input type="url" value={storeForm.social_instagram} onChange={e => setStoreForm({...storeForm, social_instagram: e.target.value})} className="w-full border border-slate-300 rounded p-3 text-sm font-mono" /></div>
-                    
                     <div>
                       <label className="block text-xs font-semibold text-slate-600 uppercase mb-2">Atelier Address</label>
-                      <textarea 
-                        value={storeForm.contact_address} 
-                        onChange={e => setStoreForm({...storeForm, contact_address: e.target.value})} 
-                        rows={3} 
-                        className="w-full border border-slate-300 rounded p-3 text-sm outline-none resize-none" 
-                      />
+                      <textarea value={storeForm.contact_address} onChange={e => setStoreForm({...storeForm, contact_address: e.target.value})} rows={3} className="w-full border border-slate-300 rounded p-3 text-sm outline-none resize-none" />
                     </div>
                   </div>
                 )}
@@ -621,6 +649,81 @@ export default function WebSetup() {
             <div className="flex justify-center gap-3 mt-6">
               <button onClick={() => setDeleteSliderId(null)} className="px-5 py-2.5 text-sm font-medium text-slate-700 bg-slate-100 rounded-lg w-full">Cancel</button>
               <button onClick={() => deleteSliderMutation.mutate(deleteSliderId)} disabled={deleteSliderMutation.isPending} className="px-5 py-2.5 text-sm font-medium bg-rose-500 text-white rounded-lg w-full">Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* EVENT FORM MODAL */}
+      {showEventModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-200">
+            <div className="p-5 border-b border-slate-200 bg-slate-50 flex items-center justify-between shrink-0">
+              <h2 className="text-lg font-bold text-slate-900 uppercase tracking-wide">{eventForm.id ? 'Edit Event' : 'Create New Event'}</h2>
+              <button onClick={() => setShowEventModal(false)} className="p-2 hover:bg-slate-200 rounded-full text-slate-500 transition-colors"><X size={20} /></button>
+            </div>
+            <div className="p-6 overflow-y-auto custom-scrollbar space-y-5">
+              
+              {/* CHANGED: This image upload box now respects a 4:5 aspect ratio and recommends 2160x2700 */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 uppercase mb-2">Event Image (Poster)</label>
+                <div className="border-2 border-dashed border-slate-300 rounded-lg p-6 bg-slate-50 hover:bg-slate-100 transition-colors text-center relative flex flex-col items-center min-h-[220px]">
+                  {eventForm.image_preview ? (
+                    <div className="relative w-full max-w-[200px] mx-auto aspect-[4/5] rounded overflow-hidden border border-slate-200 mb-2">
+                      <img src={eventForm.image_preview} alt="Event Preview" className="w-full h-full object-cover" />
+                    </div>
+                  ) : (
+                    <>
+                      <UploadCloud size={32} className="text-slate-400 mb-2 mt-4" />
+                      <p className="text-sm font-medium text-slate-700">Click to upload event poster</p>
+                    </>
+                  )}
+                  <p className="text-xs text-slate-400 mt-1 z-20">(Required Size: 2160x2700 px)</p>
+                  <input type="file" accept="image/*" onChange={(e) => { const f = e.target.files?.[0]; if(f) setEventForm(p => ({...p, image_file: f, image_preview: URL.createObjectURL(f)})) }} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div className="md:col-span-2">
+                  <label className="block text-xs font-semibold text-slate-600 uppercase mb-2">Event Title *</label>
+                  <input type="text" required value={eventForm.title} onChange={e => setEventForm({...eventForm, title: e.target.value})} className="w-full border border-slate-300 rounded p-2.5 text-sm outline-none focus:border-slate-500" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 uppercase mb-2">Date / Time</label>
+                  <input type="text" placeholder="e.g., Oct 24, 2026 - 6:00 PM" value={eventForm.event_date} onChange={e => setEventForm({...eventForm, event_date: e.target.value})} className="w-full border border-slate-300 rounded p-2.5 text-sm outline-none focus:border-slate-500" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 uppercase mb-2">Location</label>
+                  <input type="text" placeholder="e.g., Main Atelier Gallery" value={eventForm.location} onChange={e => setEventForm({...eventForm, location: e.target.value})} className="w-full border border-slate-300 rounded p-2.5 text-sm outline-none focus:border-slate-500" />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-xs font-semibold text-slate-600 uppercase mb-2">Description</label>
+                  <textarea rows={4} value={eventForm.description} onChange={e => setEventForm({...eventForm, description: e.target.value})} className="w-full border border-slate-300 rounded p-2.5 text-sm outline-none focus:border-slate-500 resize-none" />
+                </div>
+              </div>
+              <div className="pt-2 flex items-center justify-between border-t border-slate-100">
+                <span className="text-sm font-semibold text-slate-800">Status: {eventForm.status ? 'Active' : 'Draft'}</span>
+                <ToggleSwitch checked={eventForm.status} onChange={val => setEventForm({...eventForm, status: val})} />
+              </div>
+            </div>
+            <div className="p-5 border-t border-slate-200 bg-white flex justify-end gap-3 shrink-0">
+              <button type="button" onClick={() => setShowEventModal(false)} className="px-5 py-2.5 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors">Cancel</button>
+              <button type="button" onClick={() => saveEventMutation.mutate()} disabled={saveEventMutation.isPending || !eventForm.title} className="px-5 py-2.5 text-sm font-medium bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors disabled:opacity-50">
+                {saveEventMutation.isPending ? 'Saving...' : 'Save Event'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* EVENT DELETE CONFIRMATION */}
+      {deleteEventId && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden p-8 text-center">
+            <h2 className="text-xl font-bold text-slate-900 mb-2">Delete Event?</h2>
+            <div className="flex justify-center gap-3 mt-6">
+              <button onClick={() => setDeleteEventId(null)} className="px-5 py-2.5 text-sm font-medium text-slate-700 bg-slate-100 rounded-lg w-full">Cancel</button>
+              <button onClick={() => deleteEventMutation.mutate(deleteEventId)} disabled={deleteEventMutation.isPending} className="px-5 py-2.5 text-sm font-medium bg-rose-500 text-white rounded-lg w-full">Delete</button>
             </div>
           </div>
         </div>

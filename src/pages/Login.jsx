@@ -8,6 +8,15 @@ import { Label } from "@/components/ui/label";
 import { LogIn, Mail, Lock, Loader2 } from "lucide-react";
 import AuthLayout from "@/components/AuthLayout";
 
+// --- ADMIN EMAILS LIST (Fetched from .env) ---
+const getAdminEmails = () => {
+  const envEmails = import.meta.env.VITE_ADMIN_EMAILS || "";
+  // Splits the comma-separated string, removes extra spaces, and converts to lowercase
+  return envEmails.split(',').map(email => email.trim().toLowerCase()).filter(Boolean);
+};
+
+const ADMIN_EMAILS = getAdminEmails();
+
 export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -18,7 +27,7 @@ export default function Login() {
   const hostname = window.location.hostname;
   const isLocalDev = hostname === 'localhost' || hostname === '127.0.0.1';
   
-  // CHECK ROUTE
+  // CHECK ROUTE (Used for UI styling, but not for post-login routing anymore)
   const isAdminRoute = window.location.pathname.startsWith('/admin');
   
   // Refs for Telegram widget
@@ -36,8 +45,14 @@ export default function Login() {
       });
       if (signInError) throw signInError;
       
-      // Redirect to /admin if they logged in from the admin login page
-      window.location.href = isAdminRoute ? "/admin" : "/";
+      // Route based on email address
+      const userEmail = email.toLowerCase().trim();
+      if (ADMIN_EMAILS.includes(userEmail)) {
+        window.location.href = "/admin";
+      } else {
+        window.location.href = "/";
+      }
+      
     } catch (/** @type {any} */ err) {
       setError(err.message || "Invalid email or password");
     } finally {
@@ -64,7 +79,13 @@ export default function Login() {
 
       if (signInError) throw signInError;
       
-      window.location.href = "/";
+      // Route based on Telegram's connected email address
+      const userEmail = data.email.toLowerCase().trim();
+      if (ADMIN_EMAILS.includes(userEmail)) {
+        window.location.href = "/admin";
+      } else {
+        window.location.href = "/";
+      }
       
     } catch (err) {
       console.error("Telegram Auth Error:", err);
@@ -100,16 +121,6 @@ export default function Login() {
       title="Welcome back"
       subtitle={isAdminRoute ? "Admin Portal Login" : "Log in to your account"}
       hideBackLink={isAdminRoute}
-      footer={
-        !isAdminRoute ? (
-          <>
-            Don't have an account?{" "}
-            <Link to="/register" className="text-primary font-medium hover:underline">
-              Create one
-            </Link>
-          </>
-        ) : null
-      }
     >
       {!isAdminRoute && (
         <>
@@ -171,7 +182,6 @@ export default function Login() {
         </div>
       )}
 
-      {/* Email form is now rendered unconditionally for both Admin and Customer views */}
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="space-y-2">
           <Label htmlFor="email">Email</Label>
@@ -211,6 +221,7 @@ export default function Login() {
             />
           </div>
         </div>
+        
         <Button type="submit" className="w-full h-12 font-medium" disabled={loading}>
           {loading ? (
             <>
@@ -221,6 +232,16 @@ export default function Login() {
             "Log in"
           )}
         </Button>
+
+        {/* REGISTER LINK MOVED DIRECTLY INSIDE THE FORM */}
+        {!isAdminRoute && (
+          <div className="pt-4 text-center text-sm text-muted-foreground">
+            Don't have an account?{" "}
+            <Link to="/register" className="text-foreground font-semibold hover:underline">
+              Create one
+            </Link>
+          </div>
+        )}
       </form>
     </AuthLayout>
   );
