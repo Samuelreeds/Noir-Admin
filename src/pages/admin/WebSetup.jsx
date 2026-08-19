@@ -88,7 +88,8 @@ export default function WebSetup() {
     contact_email: '', contact_phone: '', social_instagram: '', contact_address: '',
     store_genders: 'Men, Women, Unisex',
     shipping_pp_price: '1.50', shipping_province_price: '2.50', enable_tax: false, tax_rate: '8.00',
-    ad_modal_enabled: false, ad_modal_image: '', ad_modal_image_file: null, ad_modal_image_preview: '', ad_modal_link: '/shop'
+    ad_modal_enabled: false, ad_modal_image: '', ad_modal_image_file: null, ad_modal_image_preview: '', ad_modal_link: '/shop',
+    require_telegram_checkout: false
   };
 
   const defaultSliderForm = { id: null, image_url: '', image_file: null, image_preview: '', ordering: 0, status: true, cta_enabled: true, cta_link: '/shop', cta_text_en: 'Shop Now', cta_text_kh: 'ទិញឥឡូវនេះ' };
@@ -156,7 +157,8 @@ export default function WebSetup() {
         tax_rate: storeSettings.tax_rate?.toString() ?? '8.00',
         ad_modal_enabled: !!storeSettings.ad_modal_enabled,
         ad_modal_image_preview: storeSettings.ad_modal_image || '',
-        ad_modal_link: storeSettings.ad_modal_link || '/shop'
+        ad_modal_link: storeSettings.ad_modal_link || '/shop',
+        require_telegram_checkout: !!storeSettings.require_telegram_checkout
       }));
     }
   }, [storeSettings]);
@@ -184,7 +186,8 @@ export default function WebSetup() {
         genders: storeForm.store_genders.split(',').map(s => s.trim()).filter(Boolean),
         shipping_pp_price: parseFloat(storeForm.shipping_pp_price || '0'), shipping_province_price: parseFloat(storeForm.shipping_province_price || '0'),
         enable_tax: storeForm.enable_tax, tax_rate: parseFloat(storeForm.tax_rate || '0'),
-        ad_modal_enabled: storeForm.ad_modal_enabled, ad_modal_image: adModalUrl, ad_modal_link: storeForm.ad_modal_link
+        ad_modal_enabled: storeForm.ad_modal_enabled, ad_modal_image: adModalUrl, ad_modal_link: storeForm.ad_modal_link,
+        require_telegram_checkout: storeForm.require_telegram_checkout
       };
 
       const { error } = await supabase.from('store_settings').upsert(payload);
@@ -430,7 +433,7 @@ export default function WebSetup() {
               
               <div className="bg-slate-50 p-6 flex justify-between items-center border-b border-slate-200">
                 <h1 className="text-xl font-bold text-slate-800 uppercase tracking-wide">
-                  {activeTab === 'about' ? 'Banners & About Section' : activeTab === 'contact' ? 'Footer & Contact' : activeTab === 'filters' ? 'Store Filters' : activeTab === 'popup' || activeTab === 'advertisement' ? 'Advertisement Modal' : 'Shipping & Tax'}
+                  {activeTab === 'about' ? 'Banners & About Section' : activeTab === 'contact' ? 'Footer & Contact' : activeTab === 'filters' ? 'Store Filters' : activeTab === 'popup' || activeTab === 'advertisement' ? 'Advertisement Modal' : 'Shipping & Checkout'}
                 </h1>
                 <button onClick={() => saveStoreSettingsMutation.mutate()} disabled={saveStoreSettingsMutation.isPending} className="flex items-center gap-2 px-5 py-2.5 bg-slate-900 text-white hover:bg-slate-800 rounded font-medium text-sm transition-all disabled:opacity-50">
                   {saveStoreSettingsMutation.isPending ? <RefreshCcw size={16} className="animate-spin" /> : saveSuccess ? <CheckCircle size={16} className="text-emerald-400" /> : <Save size={16} />} Save Changes
@@ -633,6 +636,17 @@ export default function WebSetup() {
                           <input type="number" step="0.01" value={storeForm.tax_rate} onChange={e => setStoreForm({...storeForm, tax_rate: e.target.value})} className="w-full max-w-sm border border-slate-300 rounded p-3 text-sm font-mono" />
                         </div>
                       )}
+                    </div>
+
+                    {/* NEW SECTION: REQUIRE TELEGRAM FOR CHECKOUT */}
+                    <div className="border-t border-slate-200 pt-6">
+                      <div className="flex items-center justify-between bg-emerald-50 p-5 rounded-lg border border-emerald-200">
+                        <div>
+                          <h3 className="text-sm font-semibold text-slate-800">Require Telegram for Checkout</h3>
+                          <p className="text-xs text-slate-500 mt-1">When active, users who registered via email will be blocked from checking out until they connect a Telegram account.</p>
+                        </div>
+                        <ToggleSwitch checked={storeForm.require_telegram_checkout} onChange={val => setStoreForm({...storeForm, require_telegram_checkout: val})} />
+                      </div>
                     </div>
                   </div>
                 )}

@@ -44,7 +44,8 @@ export default function Checkout() {
     shipping_pp_price: 1.50,
     shipping_province_price: 2.50,
     enable_tax: false,
-    tax_rate: 0
+    tax_rate: 0,
+    require_telegram_checkout: false
   });
 
   useEffect(() => {
@@ -54,7 +55,8 @@ export default function Checkout() {
           shipping_pp_price: data.shipping_pp_price ?? 1.50,
           shipping_province_price: data.shipping_province_price ?? 2.50,
           enable_tax: !!data.enable_tax,
-          tax_rate: data.tax_rate ?? 0
+          tax_rate: data.tax_rate ?? 0,
+          require_telegram_checkout: !!data.require_telegram_checkout
         });
       }
     });
@@ -99,8 +101,16 @@ export default function Checkout() {
     if (cartExpiresAt && Date.now() > parseInt(cartExpiresAt, 10)) {
       setShowCartExpiredModal(true); return; 
     }
-    if (!user) {
-      setShowAuthModal(true); return;
+    
+    // TELEGRAM REQUIREMENT CHECK
+    // Evaluates if the user's account is connected via Telegram by checking metadata and email structures
+    const isTelegramConnected = user?.app_metadata?.providers?.includes('telegram') || 
+                                user?.user_metadata?.telegram_id || 
+                                user?.email?.includes('telegram');
+
+    if (!user || (storeSettings.require_telegram_checkout && !isTelegramConnected)) {
+      setShowAuthModal(true); 
+      return;
     }
 
     setPlacing(true);
@@ -331,12 +341,17 @@ export default function Checkout() {
         <div className="lg:sticky lg:top-24 lg:self-start">
           <div className="border hairline p-6">
             <p className="label-mono text-muted-foreground mb-5">— Order Summary</p>
-            <div className="space-y-4 max-h-[40vh] overflow-y-auto no-scrollbar">
+            <div className="space-y-4 max-h-[40vh] overflow-y-auto no-scrollbar pt-2 pr-2">
               {items.map((/** @type {any} */ i) => (
-                <div key={i.key} className="flex gap-3">
-                  <div className="w-14 h-16 bg-muted shrink-0 overflow-hidden relative">
-                    {i.image && <Image src={i.image} alt={i.name} className="w-full h-full" fittingType="fill" />}
-                    <span className="absolute -top-1 -right-1 bg-foreground text-background w-4 h-4 rounded-full flex items-center justify-center font-mono text-[9px]">{i.quantity}</span>
+                <div key={i.key} className="flex gap-4">
+                  {/* CHANGED: Quantity Badge UI Fixed */}
+                  <div className="relative shrink-0 mt-1">
+                    <div className="w-14 h-16 bg-muted overflow-hidden border hairline">
+                      {i.image && <Image src={i.image} alt={i.name} className="w-full h-full object-cover" fittingType="fill" />}
+                    </div>
+                    <span className="absolute -top-2.5 -right-2.5 bg-foreground text-background w-[18px] h-[18px] rounded-full flex items-center justify-center font-mono text-[9px] z-10 border border-background shadow-sm">
+                      {i.quantity}
+                    </span>
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm truncate">{i.name}</p>
@@ -380,13 +395,17 @@ export default function Checkout() {
             <div className="w-16 h-16 bg-blue-50 text-blue-500 rounded-full flex items-center justify-center mx-auto mb-6">
               <Smartphone size={32} />
             </div>
-            <h3 className="font-display text-2xl tracking-[-0.04em] mb-2">Sign In Required</h3>
+            <h3 className="font-display text-2xl tracking-[-0.04em] mb-2">
+              {!user ? "Sign In Required" : "Telegram Required"}
+            </h3>
             <p className="text-muted-foreground mb-8 font-mono text-sm px-4">
-              Please sign in with your Telegram account to securely track and complete your order.
+              {!user 
+                ? "Please sign in to securely track and complete your order." 
+                : "This order requires a connected Telegram account for security and tracking."}
             </p>
             <div className="space-y-3">
               <button onClick={() => alert("Telegram Login Integration Coming Soon!")} className="w-full py-3.5 bg-[#229ED9] text-white label-mono transition-opacity hover:opacity-90 flex justify-center items-center gap-2">
-                Sign in with Telegram
+                Continue with Telegram
               </button>
               <button onClick={() => setShowAuthModal(false)} className="w-full py-3.5 border hairline label-mono hover:bg-muted/50 transition-colors text-muted-foreground">
                 Cancel
