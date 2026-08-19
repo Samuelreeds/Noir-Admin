@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useState } from "react";
-import { Mail, Phone, MapPin, ArrowRight } from "lucide-react";
+import { Mail, Phone, MapPin, ArrowRight, Loader2 } from "lucide-react";
 import Reveal from "@/components/store/Reveal";
 import { supabase } from "@/lib/supabase";
 import { useQuery } from '@tanstack/react-query';
@@ -8,7 +8,8 @@ import { useQuery } from '@tanstack/react-query';
 export default function Contact() {
   const [form, setForm] = useState({ name: "", email: "", subject: "", message: "" });
   const [sent, setSent] = useState(false);
-  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const [loading, setLoading] = useState(false);
+  const set = (/** @type {string} */ k, /** @type {string} */ v) => setForm((f) => ({ ...f, [k]: v }));
 
   // Fetch dynamic content from store_settings including contact_address
   const { data: settings } = useQuery({
@@ -31,11 +32,30 @@ export default function Contact() {
   const displayPhone = settings?.contact_phone || "+1 (000) 000-0000";
   const displayAddress = settings?.contact_address || "No. 1 Obsidian Square, Titanium District"; 
 
-  const submit = (e) => {
+  const submit = async (/** @type {React.FormEvent} */ e) => {
     e.preventDefault();
-    setSent(true);
-    setForm({ name: "", email: "", subject: "", message: "" });
-    setTimeout(() => setSent(false), 4000);
+    setLoading(true);
+    
+    try {
+      // Save contact submission to the database to trigger Telegram alert
+      const { error } = await supabase.from('contacts').insert([{
+        name: form.name,
+        email: form.email,
+        subject: form.subject,
+        message: form.message
+      }]);
+
+      if (error) throw error;
+
+      setSent(true);
+      setForm({ name: "", email: "", subject: "", message: "" });
+      setTimeout(() => setSent(false), 4000);
+    } catch (err) {
+      console.error("Failed to send message:", err);
+      alert("Failed to send message. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const inputCls = "w-full border hairline px-4 py-3 outline-none focus:border-foreground bg-background";
@@ -80,23 +100,23 @@ export default function Contact() {
             <div className="grid sm:grid-cols-2 gap-5">
               <div>
                 <label className="label-mono text-muted-foreground block mb-2">Name</label>
-                <input required className={inputCls} value={form.name} onChange={(e) => set("name", e.target.value)} />
+                <input required className={inputCls} value={form.name} onChange={(e) => set("name", e.target.value)} disabled={loading} />
               </div>
               <div>
                 <label className="label-mono text-muted-foreground block mb-2">Email</label>
-                <input required type="email" className={inputCls} value={form.email} onChange={(e) => set("email", e.target.value)} />
+                <input required type="email" className={inputCls} value={form.email} onChange={(e) => set("email", e.target.value)} disabled={loading} />
               </div>
             </div>
             <div>
               <label className="label-mono text-muted-foreground block mb-2">Subject</label>
-              <input className={inputCls} value={form.subject} onChange={(e) => set("subject", e.target.value)} />
+              <input className={inputCls} value={form.subject} onChange={(e) => set("subject", e.target.value)} disabled={loading} />
             </div>
             <div>
               <label className="label-mono text-muted-foreground block mb-2">Message</label>
-              <textarea required rows={6} className={`${inputCls} resize-none`} value={form.message} onChange={(e) => set("message", e.target.value)} />
+              <textarea required rows={6} className={`${inputCls} resize-none`} value={form.message} onChange={(e) => set("message", e.target.value)} disabled={loading} />
             </div>
-            <button type="submit" className="w-full bg-foreground text-background py-4 label-mono flex items-center justify-center gap-2 hover:bg-foreground/85 transition-colors">
-              Send Message <ArrowRight size={14} />
+            <button type="submit" disabled={loading} className="w-full bg-foreground text-background py-4 label-mono flex items-center justify-center gap-2 hover:bg-foreground/85 transition-colors disabled:opacity-50">
+              {loading ? <Loader2 size={14} className="animate-spin" /> : <>Send Message <ArrowRight size={14} /></>}
             </button>
             {sent && <p className="label-mono text-center text-muted-foreground">— Message received. We will respond shortly.</p>}
           </form>

@@ -1,99 +1,48 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+const TELEGRAM_BOT_TOKEN = Deno.env.get('TELEGRAM_BOT_TOKEN')
+const TELEGRAM_CHAT_ID = Deno.env.get('TELEGRAM_CHAT_ID') 
+const TELEGRAM_ORDER_THREAD_ID = Deno.env.get('TELEGRAM_ORDER_THREAD_ID') // <-- Grabs the Thread ID
 
 serve(async (req) => {
-  // Handle CORS preflight requests
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
-  }
-
   try {
-    const { user } = await req.json()
-    // You will need to add this secret to your Supabase project
-    const botToken = Deno.env.get('TELEGRAM_BOT_TOKEN')
+    const payload = await req.json()
+    const order = payload.record
 
-    if (!botToken) throw new Error("Server configuration error: Bot token missing");
-    if (!user || !user.hash) throw new Error("Invalid payload: Missing Telegram hash");
-
-    // 1. Verify Telegram Hash
-    const { hash, ...data } = user;
-    
-    // Construct the data check string (must be alphabetical)
-    const checkString = Object.keys(data)
-      .sort()
-      .map(k => `${k}=${data[k]}`)
-      .join('\n');
-
-    // Cryptographic verification using Web Crypto API
-    const encoder = new TextEncoder();
-    const secretKey = await crypto.subtle.importKey(
-      "raw",
-      await crypto.subtle.digest("SHA-256", encoder.encode(botToken)),
-      { name: "HMAC", hash: "SHA-256" },
-      false,
-      ["sign"]
-    );
-
-    const signature = await crypto.subtle.sign("HMAC", secretKey, encoder.encode(checkString));
-    const hashHex = Array.from(new Uint8Array(signature)).map(b => b.toString(16).padStart(2, '0')).join('');
-
-    if (hashHex !== hash) {
-      throw new Error("Authentication failed: Invalid Telegram signature");
+    if (!order) {
+      return new Response("No order data found", { status: 400 })
     }
 
-    // 2. Prevent replay attacks (check if auth date is within the last 24 hours)
-    const now = Math.floor(Date.now() / 1000);
-    if (now - user.auth_date > 86400) {
-      throw new Error("Authentication failed: Outdated payload");
-    }
+    // Format the message for Telegram
+    const message = `
+🚨 <b>NEW ORDER RECEIVED!</b> 🚨
 
-    // 3. Connect to Supabase using Admin privileges
-    const supabaseAdmin = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    )
+<b>Order ID:</b> MA-${order.id.slice(-8).toUpperCase()}
+<b>Customer:</b> ${order.shipping_address?.name || 'N/A'}
+<b>Phone:</b> ${order.shipping_address?.phone || 'N/A'}
+<b>Amount:</b> $${order.grand_total?.toFixed(2) || 0}
+<b>Payment:</b> ${order.payment_method?.toUpperCase()}
 
-    // 4. Find or Create the User
-    // We map Telegram users to a placeholder email domain
-    const email = `${user.id}@telegram.local`;
-    const tempPassword = crypto.randomUUID(); // Secure, one-time use password
+<a href="https://your-store-url.com/admin/orders">Log in to Dashboard</a> to view details.
+    `;
 
-    // Check if user exists
-    const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers();
-    const tgUser = existingUsers.users.find(u => u.email === email);
-
-    if (tgUser) {
-      // Update their password so the frontend can immediately log in
-      await supabaseAdmin.auth.admin.updateUserById(tgUser.id, { password: tempPassword });
-    } else {
-      // Create new user
-      await supabaseAdmin.auth.admin.createUser({
-        email: email,
-        password: tempPassword,
-        email_confirm: true,
-        user_metadata: {
-          full_name: user.first_name + (user.last_name ? ` ${user.last_name}` : ''),
-          telegram_id: user.id,
-          telegram_username: user.username,
-          avatar_url: user.photo_url
-        }
-      });
-    }
-
-    // Return the secure credentials to the frontend so it can initiate the session
-    return new Response(JSON.stringify({ email, password: tempPassword }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    // Send the HTTP request to the official Telegram Bot API
+    const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: TELEGRAM_CHAT_ID,
+        message_thread_id: TELEGRAM_ORDER_THREAD_ID, // <-- Routes it to the specific Topic!
+        text: message,
+        parse_mode: 'HTML',
+        disable_web_page_preview: true
+      })
     })
+
+    const result = await response.json()
+    return new Response(JSON.stringify(result), { headers: { "Content-Type": "application/json" } })
 
   } catch (error) {
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 400,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
+    return new Response(JSON.stringify({ error: error.message }), { status: 500 })
   }
 })

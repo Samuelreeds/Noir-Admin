@@ -11,7 +11,7 @@ export default function AdminLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
-  const { user, logout } = useAuth(); // Removed redundant isLoadingAuth checks as App.jsx handles it securely
+  const { user, logout } = useAuth();
   
   // State for collapsible menus (Default Web Setting & General Setup to open)
   const [openMenus, setOpenMenus] = useState({ products: false, webSetting: true, generalSetup: true });
@@ -58,7 +58,6 @@ export default function AdminLayout() {
         </div>
         
         <nav className="flex-1 overflow-y-auto py-4 custom-scrollbar">
-          {/* FIXED: All links now include the /admin prefix */}
           <Link to="/admin" className={navItemClass("/admin", true)}>
             <LayoutDashboard size={18} /> Dashboard
           </Link>
@@ -125,15 +124,23 @@ export default function AdminLayout() {
         <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 sticky top-0 z-40">
            <div className="flex items-center gap-4">
              <h1 className="text-lg font-semibold text-slate-800 uppercase">
-               {/* FIXED: Title logic updated for the new /admin prefix */}
                {location.pathname === "/admin" || location.pathname === "/admin/" ? "Dashboard" : location.pathname.replace('/admin/', '').replace('-', ' ')}
              </h1>
            </div>
            <div className="flex items-center gap-4 text-sm">
-             <button onClick={() => {
-                logout();
-                window.location.href = "/";
-             }} className="flex items-center gap-2 text-slate-600 hover:text-slate-900 ml-4 border-l pl-4">
+             {/* FIXED: Added async/await to properly clear session before redirecting */}
+             <button 
+               onClick={async () => {
+                  try {
+                    await logout();
+                    window.location.href = "/";
+                  } catch (error) {
+                    console.error("Logout failed", error);
+                    window.location.href = "/";
+                  }
+               }} 
+               className="flex items-center gap-2 text-slate-600 hover:text-slate-900 ml-4 border-l pl-4 transition-colors"
+             >
                <LogOut size={16} /> <span className="text-xs">{user?.email}</span>
              </button>
            </div>
