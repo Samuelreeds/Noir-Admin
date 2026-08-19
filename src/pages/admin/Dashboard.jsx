@@ -67,7 +67,8 @@ export default function AdminDashboard() {
         <h1 className="font-display text-4xl md:text-6xl tracking-[-0.04em] leading-none">Dashboard.</h1>
       </header>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* CHANGED: Adjusted responsive grid breakpoints here */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
         <StatCard label="Revenue" value={`$${stats.revenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} sub="Realized orders" icon={DollarSign} accent="" />
         <StatCard label="Orders" value={stats.orders} sub="All time" icon={ShoppingBag} accent="" />
         <StatCard label="Products" value={stats.products} sub="In catalog" icon={Package} accent="" />

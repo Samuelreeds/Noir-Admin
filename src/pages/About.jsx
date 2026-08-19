@@ -64,12 +64,25 @@ export default function About() {
       <section className="grid md:grid-cols-2 min-h-[70vh] border-b hairline">
         <div className="flex flex-col justify-center p-6 md:p-14 border-b md:border-b-0 md:border-r hairline">
           <p className="label-mono text-muted-foreground mb-4">— Manifesto</p>
-          <h1 className="font-display text-5xl md:text-7xl tracking-[-0.05em] leading-[0.9] whitespace-pre-wrap">
-            {heading}
-          </h1>
-          <p className="text-muted-foreground mt-6 max-w-md text-balance whitespace-pre-wrap">
-            {text}
-          </p>
+          
+          {isLoading ? (
+            <div className="space-y-4 max-w-md">
+              <div className="h-16 bg-muted/60 rounded animate-pulse w-3/4"></div>
+              <div className="h-16 bg-muted/60 rounded animate-pulse w-1/2"></div>
+              <div className="h-4 bg-muted/60 rounded animate-pulse w-full mt-6"></div>
+              <div className="h-4 bg-muted/60 rounded animate-pulse w-5/6"></div>
+              <div className="h-4 bg-muted/60 rounded animate-pulse w-2/3"></div>
+            </div>
+          ) : (
+            <>
+              <h1 className="font-display text-5xl md:text-7xl tracking-[-0.05em] leading-[0.9] whitespace-pre-wrap">
+                {heading}
+              </h1>
+              <p className="text-muted-foreground mt-6 max-w-md text-balance whitespace-pre-wrap">
+                {text}
+              </p>
+            </>
+          )}
         </div>
         <div className="relative overflow-hidden min-h-[40vh]">
           {isLoading ? (
@@ -85,16 +98,30 @@ export default function About() {
         <div className="max-w-[1400px] mx-auto px-4 md:px-8">
           <Reveal className="mb-12">
             <p className="label-mono text-muted-foreground mb-3">— Principles</p>
-            <h2 className="font-display text-4xl md:text-6xl tracking-[-0.04em] whitespace-pre-wrap">
-              {principlesHeading}
-            </h2>
+            {isLoading ? (
+               <div className="h-12 bg-muted/60 rounded animate-pulse w-64"></div>
+            ) : (
+              <h2 className="font-display text-4xl md:text-6xl tracking-[-0.04em] whitespace-pre-wrap">
+                {principlesHeading}
+              </h2>
+            )}
           </Reveal>
           <div className="grid md:grid-cols-3 gap-px bg-border">
             {principles.map((p, i) => (
               <Reveal key={p.n} delay={i * 90} className="bg-background p-8 md:p-10">
                 <p className="font-mono text-sm text-muted-foreground mb-6">{p.n}</p>
-                <h3 className="font-display text-2xl tracking-[-0.04em] mb-4">{p.t}</h3>
-                <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">{p.d}</p>
+                {isLoading ? (
+                  <div className="space-y-3">
+                    <div className="h-6 bg-muted/60 rounded animate-pulse w-3/4"></div>
+                    <div className="h-4 bg-muted/60 rounded animate-pulse w-full mt-4"></div>
+                    <div className="h-4 bg-muted/60 rounded animate-pulse w-5/6"></div>
+                  </div>
+                ) : (
+                  <>
+                    <h3 className="font-display text-2xl tracking-[-0.04em] mb-4">{p.t}</h3>
+                    <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">{p.d}</p>
+                  </>
+                )}
               </Reveal>
             ))}
           </div>
@@ -141,9 +168,16 @@ export default function About() {
       {/* CTA */}
       <section className="border-t hairline py-20 md:py-32 text-center px-6">
         <Reveal>
-          <h2 className="font-display text-4xl md:text-7xl tracking-[-0.05em] leading-[0.95] whitespace-pre-wrap">
-            {ctaHeading}
-          </h2>
+          {isLoading ? (
+            <div className="flex flex-col items-center">
+              <div className="h-16 bg-muted/60 rounded animate-pulse w-full max-w-lg mb-2"></div>
+              <div className="h-16 bg-muted/60 rounded animate-pulse w-full max-w-sm"></div>
+            </div>
+          ) : (
+            <h2 className="font-display text-4xl md:text-7xl tracking-[-0.05em] leading-[0.95] whitespace-pre-wrap">
+              {ctaHeading}
+            </h2>
+          )}
           <Link to={ctaButtonLink} className="inline-flex items-center gap-2 mt-10 label-mono border-b border-foreground pb-1 hover:gap-3 transition-all">
             {ctaButtonText} <ArrowRight size={14} />
           </Link>

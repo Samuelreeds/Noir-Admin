@@ -9,13 +9,18 @@ export default function ReceiptTemplate({ order }) {
     return new Date(isoString).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
   };
 
+  const orderIdShort = order.id.slice(-8).toUpperCase();
+
+  // Switched to TEC-IT for highly reliable, unblockable barcode generation
+  const barcodeUrl = `https://barcode.tec-it.com/barcode.ashx?data=${orderIdShort}&code=Code128&translate-esc=on`;
+
   return (
     <div id="print-receipt" className="hidden print:flex flex-col font-mono text-black bg-white box-border w-[80mm] mx-auto text-[11px] leading-snug pb-8">
       <style type="text/css" media="print">
         {`
           @page {
             margin: 0;
-            size: 80mm auto; /* Forces 80mm thermal roll width */
+            size: 80mm 200mm; /* Forces a narrow receipt profile in the preview to remove A4 white space */
           }
           body {
             margin: 0 !important;
@@ -33,7 +38,7 @@ export default function ReceiptTemplate({ order }) {
             left: 0;
             top: 0;
             width: 80mm;
-            padding: 4mm; /* Prevents text from hitting the physical paper edge */
+            padding: 4mm;
             box-sizing: border-box;
             display: flex !important;
             flex-direction: column;
@@ -41,9 +46,9 @@ export default function ReceiptTemplate({ order }) {
         `}
       </style>
 
-      {/* Header */}
-      <div className="text-center mb-4">
-        <h1 className="text-3xl font-black uppercase mb-1 tracking-widest">NOIR</h1>
+      {/* Header with Image Logo */}
+      <div className="text-center mb-4 flex flex-col items-center">
+        <img src="/logo.png" alt="NOIR MTD Logo" className="h-8 w-auto object-contain mx-auto mb-1.5" />
         <p className="text-[10px] uppercase font-bold">Noir MTD Official</p>
         <p className="text-[10px]">Tel: 096 666-5133</p>
         <p className="text-[10px]">info@noirmtd.com</p>
@@ -55,7 +60,7 @@ export default function ReceiptTemplate({ order }) {
       <div className="mb-3 space-y-0.5">
         <div className="flex justify-between">
           <span>ORDER:</span>
-          <span className="font-bold">#{order.id.slice(-8).toUpperCase()}</span>
+          <span className="font-bold">#{orderIdShort}</span>
         </div>
         <div className="flex justify-between">
           <span>DATE:</span>
@@ -133,10 +138,16 @@ export default function ReceiptTemplate({ order }) {
 
       {/* Footer */}
       <div className="text-center mt-4 pt-4 border-t-2 border-black flex flex-col items-center">
-        <p className="font-black uppercase tracking-widest text-[13px] mb-1">Thank You</p>
-        {/* Placeholder for a Barcode if needed in the future */}
-        <div className="w-48 h-8 bg-black my-2 flex items-center justify-center opacity-80" style={{ backgroundImage: 'repeating-linear-gradient(90deg, transparent, transparent 2px, white 2px, white 4px)' }}></div>
-        <p className="text-[9px] uppercase">Please keep this receipt</p>
+        <p className="font-black uppercase tracking-widest text-[13px] mb-2">Thank You</p>
+        
+        {/* Real, Scannable Barcode */}
+        <img 
+          src={barcodeUrl} 
+          alt={`Barcode for ${orderIdShort}`} 
+          className="w-[90%] max-w-[65mm] h-12 my-2 object-contain mix-blend-multiply" 
+        />
+        
+        <p className="text-[9px] uppercase mt-2">Please keep this receipt</p>
       </div>
     </div>
   );

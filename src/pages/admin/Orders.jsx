@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   RefreshCcw, Download, Printer, Search, Eye, X, FileText, ChevronLeft, ChevronRight,
-  Package, Truck, CheckCircle, Camera, CreditCard, MapPin, User, ArrowLeft
+  Package, Truck, CheckCircle, Camera, CreditCard, MapPin, User, ArrowLeft, AlertTriangle
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -202,12 +202,29 @@ export default function Orders() {
     uploadProofMutation.mutate({ file, type, orderId: selectedOrder.id });
   };
 
+  // ADDED ENFORCEMENT RULES HERE
   const advanceStatus = (/** @type {string} */ currentStatus) => {
     if (!selectedOrder) return;
     let nextStatus = ''; let timestampField = '';
-    if (currentStatus === 'pending') { nextStatus = 'packed'; timestampField = 'packed_at'; }
-    else if (currentStatus === 'packed') { nextStatus = 'shipping'; timestampField = 'shipped_at'; }
-    else if (currentStatus === 'shipping') { nextStatus = 'delivered'; timestampField = 'delivered_at'; }
+    
+    if (currentStatus === 'pending') { 
+      if (!selectedOrder.internal_proof_url) {
+        alert("Please upload the Internal Proof (Packed) photo before marking this order as packed.");
+        return;
+      }
+      nextStatus = 'packed'; timestampField = 'packed_at'; 
+    }
+    else if (currentStatus === 'packed') { 
+      nextStatus = 'shipping'; timestampField = 'shipped_at'; 
+    }
+    else if (currentStatus === 'shipping') { 
+      if (!selectedOrder.delivery_proof_url) {
+        alert("Please upload the Delivery Proof (Public) photo before marking this order as delivered.");
+        return;
+      }
+      nextStatus = 'delivered'; timestampField = 'delivered_at'; 
+    }
+    
     if (nextStatus) updateStatusMutation.mutate({ id: selectedOrder.id, newStatus: nextStatus, timestampField });
   };
 
@@ -498,17 +515,29 @@ export default function Orders() {
                     <div className="p-8">
                       <div className="relative border-l-2 border-slate-200 ml-4 space-y-10 pb-4">
                         
-                        {/* 1. Pending */}
+                        {/* 1. Pending (MARK AS PACKED ENFORCEMENT) */}
                         <div className="relative pl-8">
                           <div className="absolute -left-[17px] top-0 bg-slate-800 text-white w-8 h-8 rounded-full flex items-center justify-center shadow-[0_0_0_4px_white]"><Package size={14} /></div>
                           <div>
                             <h4 className="font-bold text-slate-900">PROCESSING (Pending)</h4>
                             <p className="text-sm text-slate-500 mt-1">Order Placed</p>
                             <p className="text-xs text-slate-400 mt-0.5">{formatDateTime(selectedOrder.created_at)}</p>
+                            
                             {selectedOrder.status === 'pending' && (
-                              <button onClick={() => advanceStatus('pending')} disabled={updateStatusMutation.isPending} className="mt-3 text-xs bg-slate-800 text-white px-4 py-1.5 rounded hover:bg-slate-700 transition-colors disabled:opacity-50">
-                                {updateStatusMutation.isPending ? 'Updating...' : 'Mark as Packed'}
-                              </button>
+                              <div className="mt-4">
+                                {!selectedOrder.internal_proof_url && (
+                                  <p className="text-[10px] text-destructive font-semibold mb-1.5 flex items-center gap-1.5">
+                                    <AlertTriangle size={12} /> Upload Internal Proof photo to proceed
+                                  </p>
+                                )}
+                                <button 
+                                  onClick={() => advanceStatus('pending')} 
+                                  disabled={updateStatusMutation.isPending || !selectedOrder.internal_proof_url} 
+                                  className="text-xs bg-slate-800 text-white px-4 py-2 rounded hover:bg-slate-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  {updateStatusMutation.isPending ? 'Updating...' : 'Mark as Packed'}
+                                </button>
+                              </div>
                             )}
                           </div>
                         </div>
@@ -532,7 +561,7 @@ export default function Orders() {
                           </div>
                         </div>
 
-                        {/* 3. Shipping */}
+                        {/* 3. Shipping (MARK AS DELIVERED ENFORCEMENT) */}
                         <div className={`relative pl-8 ${!selectedOrder.shipped_at && selectedOrder.status !== 'shipping' && selectedOrder.status !== 'delivered' ? 'opacity-40' : ''}`}>
                           <div className={`absolute -left-[17px] top-0 w-8 h-8 rounded-full flex items-center justify-center shadow-[0_0_0_4px_white] ${selectedOrder.shipped_at ? 'bg-blue-600 text-white' : 'bg-slate-100 border border-slate-300 text-slate-400'}`}><Truck size={14} /></div>
                           <div>
@@ -544,9 +573,20 @@ export default function Orders() {
                               </>
                             )}
                             {selectedOrder.status === 'shipping' && (
-                              <button onClick={() => advanceStatus('shipping')} disabled={updateStatusMutation.isPending} className="mt-3 text-xs bg-blue-600 text-white px-4 py-1.5 rounded hover:bg-blue-700 transition-colors disabled:opacity-50">
-                                {updateStatusMutation.isPending ? 'Updating...' : 'Mark as Delivered'}
-                              </button>
+                              <div className="mt-4">
+                                {!selectedOrder.delivery_proof_url && (
+                                  <p className="text-[10px] text-destructive font-semibold mb-1.5 flex items-center gap-1.5">
+                                    <AlertTriangle size={12} /> Upload Delivery Proof photo to proceed
+                                  </p>
+                                )}
+                                <button 
+                                  onClick={() => advanceStatus('shipping')} 
+                                  disabled={updateStatusMutation.isPending || !selectedOrder.delivery_proof_url} 
+                                  className="text-xs bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  {updateStatusMutation.isPending ? 'Updating...' : 'Mark as Delivered'}
+                                </button>
+                              </div>
                             )}
                           </div>
                         </div>
