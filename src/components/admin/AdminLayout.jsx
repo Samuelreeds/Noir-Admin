@@ -122,25 +122,25 @@ export default function AdminLayout() {
         
         <nav className="flex-1 overflow-y-auto py-4 custom-scrollbar">
           
-          {/* Dashboard is universally accessible to logged-in admins */}
-          <Link to="/admin" className={navItemClass("/admin", true)}>
+          {/* Dashboard */}
+          <Link to="/" className={navItemClass("/", true)}>
             <LayoutDashboard size={18} /> Dashboard
           </Link>
 
           {hasAccess('orders') && (
-            <Link to="/admin/orders" className={navItemClass("/admin/orders")}>
+            <Link to="/orders" className={navItemClass("/orders")}>
               <ShoppingCart size={18} /> Product Orders
             </Link>
           )}
           
           {hasAccess('orders') && (
-            <Link to="/admin/payments" className={navItemClass("/admin/payments")}>
+            <Link to="/payments" className={navItemClass("/payments")}>
               <CreditCard size={18} /> Payment History
             </Link>
           )}
           
           {hasAccess('users') && (
-            <Link to="/admin/customers" className={navItemClass("/admin/customers")}>
+            <Link to="/customers" className={navItemClass("/customers")}>
               <Users size={18} /> Customer
             </Link>
           )}
@@ -154,7 +154,7 @@ export default function AdminLayout() {
               {openMenus.products && (
                 <div className="bg-slate-50 py-1 border-y border-slate-100">
                   {["Product", "Category", "Product Type", "Advertisement", "Color", "Size", "Inventory"].map(sub => (
-                    <Link key={sub} to={`/admin/products/${sub.toLowerCase().replace(' ', '-')}`} className="block px-12 py-2.5 text-sm text-slate-500 hover:text-slate-900">— {sub}</Link>
+                    <Link key={sub} to={`/products/${sub.toLowerCase().replace(' ', '-')}`} className="block px-12 py-2.5 text-sm text-slate-500 hover:text-slate-900">— {sub}</Link>
                   ))}
                 </div>
               )}
@@ -162,7 +162,7 @@ export default function AdminLayout() {
           )}
 
           {hasAccess('users') && (
-            <Link to="/admin/users" className={navItemClass("/admin/users")}>
+            <Link to="/users" className={navItemClass("/users")}>
               <Users size={18} /> User Management
             </Link>
           )}
@@ -175,8 +175,8 @@ export default function AdminLayout() {
               </button>
               {openMenus.role && (
                 <div className="bg-slate-50 py-1 border-y border-slate-100">
-                  <Link to="/admin/roles" className={activeSubClass('/admin/roles')}>— Roles</Link>
-                  <Link to="/admin/permissions" className={activeSubClass('/admin/permissions')}>— Permissions</Link>
+                  <Link to="/roles" className={activeSubClass('/roles')}>— Roles</Link>
+                  <Link to="/permissions" className={activeSubClass('/permissions')}>— Permissions</Link>
                 </div>
               )}
             </div>
@@ -190,10 +190,10 @@ export default function AdminLayout() {
               </button>
               {openMenus.webSetting && (
                 <div className="bg-slate-50 py-1 border-y border-slate-100">
-                  <Link to="/admin/web-setup?tab=about" className={subItemClass('about')}>— About Section</Link>
-                  <Link to="/admin/web-setup?tab=contact" className={subItemClass('contact')}>— Footer & Contact</Link>
-                  <Link to="/admin/web-setup?tab=filters" className={subItemClass('filters')}>— Store Filters</Link>
-                  <Link to="/admin/web-setup?tab=shipping" className={subItemClass('shipping')}>— Shipping & Tax</Link>
+                  <Link to="/web-setup?tab=about" className={subItemClass('about')}>— About Section</Link>
+                  <Link to="/web-setup?tab=contact" className={subItemClass('contact')}>— Footer & Contact</Link>
+                  <Link to="/web-setup?tab=filters" className={subItemClass('filters')}>— Store Filters</Link>
+                  <Link to="/web-setup?tab=shipping" className={subItemClass('shipping')}>— Shipping & Tax</Link>
                 </div>
               )}
             </div>
@@ -207,7 +207,7 @@ export default function AdminLayout() {
               </button>
               {openMenus.generalSetup && (
                 <div className="bg-slate-50 py-1 border-y border-slate-100">
-                  <Link to="/admin/web-setup?tab=slider" className={subItemClass('slider')}>— Slider</Link>
+                  <Link to="/web-setup?tab=slider" className={subItemClass('slider')}>— Slider</Link>
                 </div>
               )}
             </div>
@@ -220,13 +220,13 @@ export default function AdminLayout() {
         <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 sticky top-0 z-40">
            <div className="flex items-center gap-4">
              <h1 className="text-lg font-semibold text-slate-800 uppercase">
-               {location.pathname === "/admin" || location.pathname === "/admin/" ? "Dashboard" : location.pathname.replace('/admin/', '').replace('-', ' ')}
+               {location.pathname === "/" ? "Dashboard" : location.pathname.replace('/', '').replace('-', ' ')}
              </h1>
            </div>
            <div className="flex items-center gap-4 text-sm">
              <button 
                onClick={async () => {
-                  try { await logout(); window.location.href = "/"; } catch (error) { console.error("Logout failed", error); window.location.href = "/"; }
+                 try { await logout(); window.location.href = "/"; } catch (error) { console.error("Logout failed", error); window.location.href = "/"; }
                }} 
                className="flex items-center gap-2 text-slate-600 hover:text-slate-900 ml-4 border-l pl-4 transition-colors"
              >
