@@ -4,7 +4,7 @@ import { Link, Outlet, useNavigate, useLocation, useSearchParams } from "react-r
 import { useAuth } from "@/lib/AuthContext";
 import { 
   LayoutDashboard, ShoppingCart, CreditCard, Users, 
-  Package, Settings, LogOut, ChevronDown, ChevronRight
+  Package, Settings, LogOut, ChevronDown, ChevronRight, Shield
 } from "lucide-react";
 
 export default function AdminLayout() {
@@ -13,10 +13,9 @@ export default function AdminLayout() {
   const [searchParams] = useSearchParams();
   const { user, logout } = useAuth();
   
-  // State for collapsible menus (Default Web Setting & General Setup to open)
-  const [openMenus, setOpenMenus] = useState({ products: false, webSetting: true, generalSetup: true });
+  // Added 'role' to state
+  const [openMenus, setOpenMenus] = useState({ products: false, webSetting: true, generalSetup: true, role: true });
 
-  // Global Escape Key Listener for "Go Back" Navigation
   useEffect(() => {
     const handleKeyDown = (/** @type {KeyboardEvent} */ e) => {
       if (e.key === 'Escape') {
@@ -40,10 +39,14 @@ export default function AdminLayout() {
     }`;
   };
 
-  // Helper for the new nested Query Param links
   const currentTab = searchParams.get('tab') || '';
   const subItemClass = (/** @type {string} */ tabName) => `block px-12 py-2.5 text-sm transition-colors ${
     currentTab === tabName ? "text-slate-900 font-semibold" : "text-slate-500 hover:text-slate-900"
+  }`;
+  
+  // Helper for non-tab direct links in dropdowns (like Roles)
+  const activeSubClass = (/** @type {string} */ path) => `block px-12 py-2.5 text-sm transition-colors ${
+    location.pathname.startsWith(path) ? "text-slate-900 font-semibold" : "text-slate-500 hover:text-slate-900"
   }`;
 
   return (
@@ -51,7 +54,6 @@ export default function AdminLayout() {
       {/* Sidebar */}
       <aside className="w-64 shrink-0 hidden md:flex flex-col fixed inset-y-0 left-0 bg-white border-r border-slate-200 z-50">
         <div className="h-16 flex items-center px-6 border-b border-slate-200">
-          {/* Logo links back to the main storefront */}
           <a href="/" className="flex items-center gap-2">
             <img src="/logo.png" alt="NOIR MTD Logo" className="h-8 w-auto object-contain" />
           </a>
@@ -86,6 +88,20 @@ export default function AdminLayout() {
             )}
           </div>
 
+          {/* NEW: Collapsible Roles & Permissions */}
+          <div>
+            <button onClick={() => toggleMenu('role')} className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-slate-600 hover:bg-slate-50">
+              <div className="flex items-center gap-3"><Shield size={18} /> Role</div>
+              {openMenus.role ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+            </button>
+            {openMenus.role && (
+              <div className="bg-slate-50 py-1 border-y border-slate-100">
+                <Link to="/admin/roles" className={activeSubClass('/admin/roles')}>— Roles</Link>
+                <Link to="/admin/permissions" className={activeSubClass('/admin/permissions')}>— Permissions</Link>
+              </div>
+            )}
+          </div>
+
           {/* Collapsible Web Setting */}
           <div>
             <button onClick={() => toggleMenu('webSetting')} className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-slate-600 hover:bg-slate-50">
@@ -102,7 +118,7 @@ export default function AdminLayout() {
             )}
           </div>
 
-          {/* Collapsible General Setup (Only Slider remaining) */}
+          {/* Collapsible General Setup */}
           <div>
             <button onClick={() => toggleMenu('generalSetup')} className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-slate-600 hover:bg-slate-50">
               <div className="flex items-center gap-3"><Settings size={18} /> General Setup</div>
@@ -114,13 +130,11 @@ export default function AdminLayout() {
               </div>
             )}
           </div>
-
         </nav>
       </aside>
 
       {/* Main Content Area */}
       <div className="flex-1 md:ml-64 flex flex-col min-h-screen">
-        {/* Top Navbar */}
         <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 sticky top-0 z-40">
            <div className="flex items-center gap-4">
              <h1 className="text-lg font-semibold text-slate-800 uppercase">
@@ -128,16 +142,9 @@ export default function AdminLayout() {
              </h1>
            </div>
            <div className="flex items-center gap-4 text-sm">
-             {/* FIXED: Added async/await to properly clear session before redirecting */}
              <button 
                onClick={async () => {
-                  try {
-                    await logout();
-                    window.location.href = "/";
-                  } catch (error) {
-                    console.error("Logout failed", error);
-                    window.location.href = "/";
-                  }
+                  try { await logout(); window.location.href = "/"; } catch (error) { console.error("Logout failed", error); window.location.href = "/"; }
                }} 
                className="flex items-center gap-2 text-slate-600 hover:text-slate-900 ml-4 border-l pl-4 transition-colors"
              >
@@ -145,7 +152,6 @@ export default function AdminLayout() {
              </button>
            </div>
         </header>
-
         <main className="flex-1 p-6 overflow-x-hidden">
           <Outlet />
         </main>

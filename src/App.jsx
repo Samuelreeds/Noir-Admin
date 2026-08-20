@@ -38,13 +38,17 @@ import AdminSizes from '@/pages/admin/Sizes';
 import AdminInventory from '@/pages/admin/Inventory';
 import AdminWebSetup from '@/pages/admin/WebSetup';
 
+// NEW: Role Management Imports
+import AdminRoles from '@/pages/admin/Roles';
+import AdminCreateRole from '@/pages/admin/CreateRole';
+import AdminPermissions from '@/pages/admin/Permissions';
+
 // Auth Imports
 import Login from '@/pages/Login';
 import Register from '@/pages/Register';
 import ForgotPassword from '@/pages/ForgotPassword';
 
 // --- ADMIN EMAILS BULLETPROOF CHECK ---
-// We hardcode the primary admins so it NEVER fails, and merge it with .env variables.
 const HARDCODED_ADMINS = [
   'jackstyle4@gmail.com',
   'noirmtd@gmail.com',
@@ -54,7 +58,6 @@ const HARDCODED_ADMINS = [
 const getAdminEmails = () => {
   const envEmails = import.meta.env.VITE_ADMIN_EMAILS || "";
   const parsedEnv = envEmails.split(',').map(email => email.trim().toLowerCase()).filter(Boolean);
-  // Merge hardcoded and env emails, removing duplicates
   return [...new Set([...HARDCODED_ADMINS, ...parsedEnv])];
 };
 
@@ -81,7 +84,6 @@ const AuthenticatedApp = () => {
   }
 
   // --- STRICT ADMIN VERIFICATION ---
-  // Depending on how AuthContext is written, user might be { email: ... } or { user: { email: ... } }
   const currentUser = user?.email ? user : user?.user;
   const userEmail = currentUser?.email?.toLowerCase().trim();
   const isRoleAdmin = currentUser?.user_metadata?.role === 'admin' || currentUser?.role === 'admin'; 
@@ -89,7 +91,6 @@ const AuthenticatedApp = () => {
 
   // =================================================================
   // 1. STRICT ADMIN ROUTING
-  // If you are an admin, the customer storefront is deleted from your session.
   // =================================================================
   if (isAdmin) {
     return (
@@ -108,9 +109,15 @@ const AuthenticatedApp = () => {
           <Route path="payments" element={<AdminPaymentHistory />} />
           <Route path="orders" element={<AdminOrders />} />
           <Route path="web-setup" element={<AdminWebSetup />} />
+          
+          {/* NEW: Role Management Routes correctly registered here */}
+          <Route path="roles" element={<AdminRoles />} />
+          <Route path="roles/create" element={<AdminCreateRole />} />
+          <Route path="roles/:id" element={<AdminCreateRole />} />
+          <Route path="permissions" element={<AdminPermissions />} />
         </Route>
         
-        {/* Force admins back to dashboard if they try to access /account or / */}
+        {/* Force admins back to dashboard if they try to access /account, / or an unknown route */}
         <Route path="*" element={<Navigate to="/admin" replace />} />
       </Routes>
     );
@@ -121,12 +128,10 @@ const AuthenticatedApp = () => {
   // =================================================================
   return (
     <Routes>
-      {/* Auth Routes */}
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
 
-      {/* Storefront Routes */}
       <Route element={<StoreLayout />}>
         <Route path="/" element={<Home />} />
         <Route path="/shop" element={<Shop />} />
@@ -137,14 +142,12 @@ const AuthenticatedApp = () => {
         <Route path="/contact" element={<Contact />} />
       </Route>
 
-      {/* Customer Account Routes */}
       <Route path="/account" element={<AccountLayout />}>
         <Route index element={<AccountProfile />} />
         <Route path="orders" element={<AccountOrders />} />
         <Route path="addresses" element={<AccountAddresses />} />
       </Route>
 
-      {/* 404 CATCH-ALL */}
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );
