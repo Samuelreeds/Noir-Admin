@@ -3,7 +3,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
-import { Save, X } from 'lucide-react';
+import { Save, X, ShieldAlert } from 'lucide-react';
+import { useAuth } from '@/lib/AuthContext';
 
 export default function CreateRole() {
   const { id } = useParams();
@@ -11,10 +12,29 @@ export default function CreateRole() {
   const queryClient = useQueryClient();
   const isEditing = Boolean(id);
 
+  const { user } = useAuth();
+  const actualUser = user?.email ? user : user?.user;
+
   const [form, setForm] = useState({ name: '', description: '', is_active: true });
   const [selectedPerms, setSelectedPerms] = useState([]);
 
-  // Fetch all available permissions to build the checklist
+  const { data: myRoleName } = useQuery({
+    queryKey: ['my-role', actualUser?.id],
+    queryFn: async () => {
+      if (!actualUser?.id) return null;
+      const { data } = await supabase
+        .from('admin_user_roles')
+        .select('admin_roles(name)')
+        .eq('user_id', actualUser.id)
+        .single();
+      return data?.admin_roles?.name || null;
+    },
+    enabled: !!actualUser?.id
+  });
+
+  const isOwner = actualUser?.email && ['jackstyle4@gmail.com', 'noirmtd@gmail.com', 'admin@testing.com'].includes(actualUser.email.toLowerCase());
+  const isSuperAdmin = isOwner || myRoleName === 'SUPER_ADMIN';
+
   const { data: allPermissions = [] } = useQuery({
     queryKey: ['admin-permissions'],
     queryFn: async () => {
@@ -23,7 +43,6 @@ export default function CreateRole() {
     }
   });
 
-  // If editing, fetch the existing role data
   useEffect(() => {
     if (isEditing) {
       const fetchRole = async () => {
@@ -41,7 +60,6 @@ export default function CreateRole() {
     mutationFn: async () => {
       let roleId = id;
       
-      // 1. Insert or Update Role Table
       if (isEditing) {
         const { error } = await supabase.from('admin_roles').update(form).eq('id', roleId);
         if (error) throw error;
@@ -51,13 +69,14 @@ export default function CreateRole() {
         roleId = data.id;
       }
 
-      // 2. Sync Permissions (Delete old, insert new)
-      await supabase.from('admin_role_permissions').delete().eq('role_id', roleId);
-      
-      if (selectedPerms.length > 0) {
-        const mappingRows = selectedPerms.map(permId => ({ role_id: roleId, permission_id: permId }));
-        const { error: mapError } = await supabase.from('admin_role_permissions').insert(mappingRows);
-        if (mapError) throw mapError;
+      if (isSuperAdmin) {
+        await supabase.from('admin_role_permissions').delete().eq('role_id', roleId);
+        
+        if (selectedPerms.length > 0) {
+          const mappingRows = selectedPerms.map(permId => ({ role_id: roleId, permission_id: permId }));
+          const { error: mapError } = await supabase.from('admin_role_permissions').insert(mappingRows);
+          if (mapError) throw mapError;
+        }
       }
     },
     onSuccess: () => {
@@ -74,28 +93,35 @@ export default function CreateRole() {
   }, {});
 
   const handleToggle = (permId) => {
+    if (!isSuperAdmin) return; 
     setSelectedPerms(prev => prev.includes(permId) ? prev.filter(id => id !== permId) : [...prev, permId]);
   };
 
   return (
-    <div className="max-w-6xl space-y-6">
-      <div className="flex justify-between items-center mb-8 pb-4 border-b border-slate-200">
-        <h1 className="text-3xl font-bold font-display uppercase tracking-tight text-slate-900">
+    <div className="w-full space-y-6">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6 pb-4 border-b border-slate-200">
+        <h1 className="text-2xl md:text-3xl font-bold font-display uppercase tracking-tight text-slate-900">
           {isEditing ? 'Edit Role' : 'Create Role'}
         </h1>
-        <div className="flex gap-3">
-          <button onClick={() => navigate('/admin/roles')} className="bg-red-50 text-red-600 px-5 py-2.5 rounded-md flex items-center gap-2 hover:bg-red-100 transition-colors text-sm font-bold">
+        <div className="flex gap-2 w-full sm:w-auto">
+          <button onClick={() => navigate('/admin/roles')} className="flex-1 sm:flex-none bg-red-50 text-red-600 px-4 py-2.5 rounded-md flex items-center justify-center gap-2 hover:bg-red-100 transition-colors text-sm font-bold">
             <X size={16} strokeWidth={3} /> Discard
           </button>
-          <button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || !form.name} className="bg-slate-800 text-white px-5 py-2.5 rounded-md flex items-center gap-2 hover:bg-slate-700 transition-colors text-sm font-bold disabled:opacity-50">
-            <Save size={16} /> Save Role
+          <button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || !form.name} className="flex-1 sm:flex-none bg-slate-800 text-white px-4 py-2.5 rounded-md flex items-center justify-center gap-2 hover:bg-slate-700 transition-colors text-sm font-bold disabled:opacity-50">
+            <Save size={16} /> Save
           </button>
         </div>
       </div>
 
-      <div className="grid md:grid-cols-2 gap-8 items-start">
-        {/* Left Col: Role Details */}
-        <div className="bg-white border border-slate-200 rounded-lg p-6 shadow-sm">
+      {!isSuperAdmin && (
+        <div className="bg-blue-50 border border-blue-200 text-blue-800 px-4 py-3 rounded-lg flex items-center gap-3 text-sm mb-4">
+          <ShieldAlert size={18} />
+          You are viewing this role as a standard Admin. Only a Super Admin can modify the assigned permissions.
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8 items-start w-full">
+        <div className="bg-white border border-slate-200 rounded-lg p-5 md:p-6 shadow-sm w-full">
           <h2 className="text-xl font-bold text-slate-800 mb-6">Role Information</h2>
           <div className="space-y-5">
             <div>
@@ -118,8 +144,7 @@ export default function CreateRole() {
           </div>
         </div>
 
-        {/* Right Col: Permissions List */}
-        <div className="bg-white border border-slate-200 rounded-lg p-6 shadow-sm max-h-[70vh] overflow-y-auto custom-scrollbar">
+        <div className="bg-white border border-slate-200 rounded-lg p-5 md:p-6 shadow-sm max-h-[70vh] overflow-y-auto custom-scrollbar w-full">
           <h2 className="text-xl font-bold text-slate-800 mb-6 sticky top-0 bg-white z-10 pb-2">Permissions</h2>
           
           <div className="space-y-6">
@@ -128,15 +153,23 @@ export default function CreateRole() {
                 <h3 className="font-bold text-slate-800 capitalize mb-3 text-lg border-b border-slate-100 pb-1">{resource}</h3>
                 <div className="space-y-2">
                   {perms.map(perm => (
-                    <label key={perm.id} className="flex items-center gap-3 cursor-pointer group hover:bg-slate-50 p-1.5 rounded -ml-1.5">
-                      <div className="relative flex items-center">
-                        <input type="checkbox" checked={selectedPerms.includes(perm.id)} onChange={() => handleToggle(perm.id)} className="peer sr-only" />
-                        <div className="w-5 h-5 border-2 border-slate-300 rounded bg-white peer-checked:bg-slate-800 peer-checked:border-slate-800 transition-colors flex items-center justify-center">
-                          {selectedPerms.includes(perm.id) && <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
+                    <label key={perm.id} className={`flex items-start sm:items-center gap-3 group p-1.5 rounded -ml-1.5 ${isSuperAdmin ? 'cursor-pointer hover:bg-slate-50' : 'cursor-not-allowed opacity-60'}`}>
+                      <div className="relative flex items-center pt-0.5 sm:pt-0">
+                        <input 
+                          type="checkbox" 
+                          checked={selectedPerms.includes(perm.id)} 
+                          onChange={() => handleToggle(perm.id)} 
+                          disabled={!isSuperAdmin}
+                          className="peer sr-only" 
+                        />
+                        <div className="w-5 h-5 border-2 border-slate-300 rounded bg-white peer-checked:bg-slate-800 peer-checked:border-slate-800 peer-disabled:bg-slate-100 peer-disabled:border-slate-200 transition-colors flex items-center justify-center">
+                          {selectedPerms.includes(perm.id) && <svg className={`w-3.5 h-3.5 ${isSuperAdmin ? 'text-white' : 'text-slate-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
                         </div>
                       </div>
-                      <span className="text-sm font-medium text-slate-700 group-hover:text-slate-900">{perm.action}</span>
-                      <span className="text-xs text-slate-400">— {perm.description}</span>
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:gap-2">
+                        <span className="text-sm font-medium text-slate-700 group-hover:text-slate-900">{perm.action}</span>
+                        <span className="text-xs text-slate-400 sm:before:content-['—'] sm:before:mr-1">{perm.description}</span>
+                      </div>
                     </label>
                   ))}
                 </div>

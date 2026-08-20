@@ -24,6 +24,7 @@ import AccountOrders from '@/pages/account/Orders';
 import AccountAddresses from '@/pages/account/Addresses';
 
 // Admin Imports
+import AdminUsers from '@/pages/admin/Users';
 import AdminLayout from '@/components/admin/AdminLayout';
 import AdminDashboard from '@/pages/admin/Dashboard';
 import AdminOrders from '@/pages/admin/Orders';
@@ -96,6 +97,9 @@ const AuthenticatedApp = () => {
     return (
       <Routes>
         <Route path="/admin" element={<AdminLayout />}>
+          <Route path="customers" element={<AdminCustomers />} />
+          {/* NEW ROUTE */}
+          <Route path="users" element={<AdminUsers />} />
           <Route index element={<AdminDashboard />} />
           <Route path="products" element={<AdminProducts />} />
           <Route path="products/inventory" element={<AdminInventory />} />
