@@ -22,7 +22,8 @@ const uploadProofFileToSupabase = async (/** @type {File} */ file, /** @type {st
 };
 
 export default function Orders() {
-  const [statusFilter, setStatusFilter] = useState('All Status');
+  const [fulfilmentFilter, setFulfilmentFilter] = useState('All Fulfilment');
+  const [paymentFilter, setPaymentFilter] = useState('All Payment');
   const [currencyFilter, setCurrencyFilter] = useState('All Currency');
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFrom, setDateFrom] = useState('');
@@ -38,15 +39,16 @@ export default function Orders() {
 
   const queryClient = useQueryClient();
 
-  // 1. Fetch live orders
+  // 1. Fetch live orders (Updated with new 3-dimensional statuses)
   const { data: orders = [], isLoading: loading, refetch, isFetching } = useQuery({
     queryKey: ['admin-orders'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('orders')
         .select(`
-          id, created_at, status, payment_method, shipping_address, subtotal, shipping_fee, tax, grand_total, currency,
-          packed_at, shipped_at, delivered_at, internal_proof_url, delivery_proof_url, transaction_reference,
+          id, created_at, status, payment_status, fulfilment_status, commercial_status, 
+          payment_method, shipping_address, subtotal, shipping_fee, tax, grand_total, currency,
+          packed_at, shipped_at, delivered_at, internal_proof_url, delivery_proof_url, transaction_reference, transaction_receipt_url,
           order_items ( id, product_name, unit_price, quantity, selected_size, selected_color, total_price )
         `)
         .order('created_at', { ascending: false });
@@ -57,18 +59,20 @@ export default function Orders() {
     staleTime: 5 * 60 * 1000,
   });
 
-  // 2. Status Update Mutation
+  // 2. Multi-Dimensional Status Update Mutation
   const updateStatusMutation = useMutation({
-    mutationFn: async (/** @type {{ id: string, newStatus: string, timestampField: string }} */ { id, newStatus, timestampField }) => {
-      const updateData = { status: newStatus, [timestampField]: new Date().toISOString() };
+    mutationFn: async (/** @type {{ id: string, payment_status?: string, fulfilment_status?: string, timestampField?: string }} */ payload) => {
+      const { id, payment_status, fulfilment_status, timestampField } = payload;
+      
+      const updateData = {};
+      if (payment_status) updateData.payment_status = payment_status;
+      if (fulfilment_status) updateData.fulfilment_status = fulfilment_status;
+      if (timestampField) updateData[timestampField] = new Date().toISOString();
       
       const { data, error } = await supabase.from('orders').update(updateData).eq('id', id).select();
       
       if (error) throw error;
-      
-      if (!data || data.length === 0) {
-        throw new Error("Update blocked by Database Security Policies. Please run the provided SQL command.");
-      }
+      if (!data || data.length === 0) throw new Error("Update blocked by Database Security Policies.");
       
       return data[0];
     },
@@ -90,10 +94,7 @@ export default function Orders() {
       const { data, error } = await supabase.from('orders').update({ [fieldToUpdate]: fileUrl }).eq('id', orderId).select();
       
       if (error) throw error;
-      
-      if (!data || data.length === 0) {
-        throw new Error("Update blocked by Database Security Policies. Please run the provided SQL command.");
-      }
+      if (!data || data.length === 0) throw new Error("Update blocked by Database Security Policies.");
       
       return data[0];
     },
@@ -108,10 +109,11 @@ export default function Orders() {
     }
   });
 
-  useEffect(() => { setCurrentPage(1); setSelectedOrderIds([]); }, [statusFilter, currencyFilter, searchQuery, dateFrom, dateTo]);
+  useEffect(() => { setCurrentPage(1); setSelectedOrderIds([]); }, [fulfilmentFilter, paymentFilter, currencyFilter, searchQuery, dateFrom, dateTo]);
 
   const filteredOrders = orders.filter((/** @type {any} */ order) => {
-    if (statusFilter !== 'All Status' && order.status?.toLowerCase() !== statusFilter.toLowerCase()) return false;
+    if (fulfilmentFilter !== 'All Fulfilment' && order.fulfilment_status !== fulfilmentFilter) return false;
+    if (paymentFilter !== 'All Payment' && order.payment_status !== paymentFilter) return false;
     if (currencyFilter !== 'All Currency') {
       const orderCurrency = (order.currency || 'USD').toUpperCase();
       if (orderCurrency !== currencyFilter.toUpperCase()) return false;
@@ -142,16 +144,11 @@ export default function Orders() {
     const dataToExport = selectedOrderIds.length > 0 ? filteredOrders.filter((/** @type {any} */ o) => selectedOrderIds.includes(o.id)) : filteredOrders;
     if (dataToExport.length === 0) return alert("No data to export!");
     
-    // Updated Headers to include Products
-    const headers = ['Order ID', 'Date', 'Customer Name', 'Phone', 'Location', 'Address', 'Products Ordered', 'Total Quantity', 'Payment', 'Currency', 'Status', 'Grand Total'];
+    const headers = ['Order ID', 'Date', 'Customer Name', 'Phone', 'Location', 'Address', 'Products Ordered', 'Total Quantity', 'Payment Method', 'Currency', 'Payment Status', 'Fulfilment Status', 'Commercial Status', 'Grand Total'];
     
     const rows = dataToExport.map((/** @type {any} */ order) => {
       const addr = order.shipping_address || {};
-      
-      // Calculate total quantity of physical items
       const totalQuantity = order.order_items?.reduce((/** @type {number} */ sum, /** @type {any} */ item) => sum + (item.quantity || 1), 0) || 0;
-      
-      // Build a readable string of the products ordered
       const productsList = order.order_items?.map((/** @type {any} */ item) => 
         `${item.product_name} (${item.selected_color}/${item.selected_size}) x${item.quantity}`
       ).join(' | ') || 'No items';
@@ -167,7 +164,9 @@ export default function Orders() {
         totalQuantity, 
         order.payment_method === 'qr' ? 'Bank / QR' : order.payment_method, 
         order.currency || 'USD',
-        order.status, 
+        order.payment_status,
+        order.fulfilment_status,
+        order.commercial_status,
         order.grand_total || 0 
       ].map(field => `"${String(field).replace(/"/g, '""')}"`).join(',');
     });
@@ -178,16 +177,12 @@ export default function Orders() {
   };
 
   const openViewModal = (/** @type {any} */ order) => { setSelectedOrder(order); setIsViewModalOpen(true); };
-  
   const closeModals = () => { setIsViewModalOpen(false); setPrintMode(null); setTimeout(() => setSelectedOrder(null), 200); };
   
   const handlePrint = (/** @type {any} */ order, /** @type {'label' | 'receipt'} */ mode) => {
     setSelectedOrder(order);
     setPrintMode(mode);
-    // Timeout allows the React component for the print template to mount before triggering browser print
-    setTimeout(() => {
-      window.print();
-    }, 100);
+    setTimeout(() => window.print(), 100);
   };
 
   const formatDateTime = (/** @type {string} */ isoString) => {
@@ -202,30 +197,44 @@ export default function Orders() {
     uploadProofMutation.mutate({ file, type, orderId: selectedOrder.id });
   };
 
-  // ADDED ENFORCEMENT RULES HERE
-  const advanceStatus = (/** @type {string} */ currentStatus) => {
+  // STRICT MULTI-DIMENSIONAL WORKFLOW
+  const advanceStatus = (/** @type {string} */ action) => {
     if (!selectedOrder) return;
-    let nextStatus = ''; let timestampField = '';
     
-    if (currentStatus === 'pending') { 
+    if (action === 'approve_payment') {
+      updateStatusMutation.mutate({ 
+        id: selectedOrder.id, 
+        payment_status: 'Paid', 
+        fulfilment_status: 'Picking' 
+      });
+    }
+    else if (action === 'mark_packed') { 
       if (!selectedOrder.internal_proof_url) {
-        alert("Please upload the Internal Proof (Packed) photo before marking this order as packed.");
-        return;
+        alert("Please upload the Internal Proof (Packed) photo before marking this order as packed."); return;
       }
-      nextStatus = 'packed'; timestampField = 'packed_at'; 
+      updateStatusMutation.mutate({ 
+        id: selectedOrder.id, 
+        fulfilment_status: 'Packed', 
+        timestampField: 'packed_at' 
+      });
     }
-    else if (currentStatus === 'packed') { 
-      nextStatus = 'shipping'; timestampField = 'shipped_at'; 
+    else if (action === 'mark_shipped') { 
+      updateStatusMutation.mutate({ 
+        id: selectedOrder.id, 
+        fulfilment_status: 'Shipped / Out for Delivery', 
+        timestampField: 'shipped_at' 
+      });
     }
-    else if (currentStatus === 'shipping') { 
+    else if (action === 'mark_delivered') { 
       if (!selectedOrder.delivery_proof_url) {
-        alert("Please upload the Delivery Proof (Public) photo before marking this order as delivered.");
-        return;
+        alert("Please upload the Delivery Proof (Public) photo before marking this order as delivered."); return;
       }
-      nextStatus = 'delivered'; timestampField = 'delivered_at'; 
+      updateStatusMutation.mutate({ 
+        id: selectedOrder.id, 
+        fulfilment_status: 'Delivered', 
+        timestampField: 'delivered_at' 
+      });
     }
-    
-    if (nextStatus) updateStatusMutation.mutate({ id: selectedOrder.id, newStatus: nextStatus, timestampField });
   };
 
   return (
@@ -235,8 +244,24 @@ export default function Orders() {
         {/* Table Toolbar */}
         <div className="p-4 border-b border-slate-200 flex flex-wrap gap-4 items-center justify-between bg-slate-50/50 shrink-0">
           <div className="flex items-center gap-3 flex-wrap">
-            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="border border-slate-300 rounded px-3 py-2 text-sm bg-white outline-none cursor-pointer">
-              <option>All Status</option><option value="pending">Pending</option><option value="packed">Packed</option><option value="shipping">Shipping</option><option value="delivered">Delivered</option><option value="cancelled">Cancelled</option>
+            
+            <select value={fulfilmentFilter} onChange={(e) => setFulfilmentFilter(e.target.value)} className="border border-slate-300 rounded px-3 py-2 text-sm bg-white outline-none cursor-pointer">
+              <option>All Fulfilment</option>
+              <option value="Unconfirmed">Unconfirmed</option>
+              <option value="Picking">Picking</option>
+              <option value="Packed">Packed</option>
+              <option value="Shipped / Out for Delivery">Shipped / Out for Delivery</option>
+              <option value="Delivered">Delivered</option>
+              <option value="Cancelled">Cancelled</option>
+              <option value="Returned">Returned</option>
+            </select>
+
+            <select value={paymentFilter} onChange={(e) => setPaymentFilter(e.target.value)} className="border border-slate-300 rounded px-3 py-2 text-sm bg-white outline-none cursor-pointer">
+              <option>All Payment</option>
+              <option value="Unpaid">Unpaid</option>
+              <option value="Pending Verification">Pending Verification</option>
+              <option value="Paid">Paid</option>
+              <option value="Refunded">Refunded</option>
             </select>
 
             <select value={currencyFilter} onChange={(e) => setCurrencyFilter(e.target.value)} className="border border-slate-300 rounded px-3 py-2 text-sm bg-white outline-none cursor-pointer">
@@ -250,6 +275,7 @@ export default function Orders() {
               <span className="text-xs text-slate-400 mx-3">—</span>
               <span className="text-xs text-slate-400 mr-2">To</span><input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="py-1.5 text-sm bg-transparent outline-none text-slate-600 cursor-pointer" />
             </div>
+            
             <div className="relative">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search ID, name, phone, or address..." className="border border-slate-300 rounded pl-9 pr-4 py-2 text-sm w-[250px] md:w-[350px] outline-none focus:border-slate-500" />
@@ -259,17 +285,15 @@ export default function Orders() {
 
         <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
-            {/* UPGRADED REFRESH BUTTON - Forces absolute cache invalidation */}
             <button 
-              onClick={() => {
-                queryClient.invalidateQueries({ queryKey: ['admin-orders'] });
-                refetch();
-              }} 
+              onClick={() => { queryClient.invalidateQueries({ queryKey: ['admin-orders'] }); refetch(); }} 
               className="flex items-center gap-2 px-3 py-1.5 border border-slate-300 rounded text-sm hover:bg-slate-50 transition-colors"
             >
               <RefreshCcw size={14} className={isFetching ? "animate-spin" : ""} /> Refresh
             </button>
-            <button onClick={exportToCSV} className="flex items-center gap-2 px-3 py-1.5 bg-slate-800 text-white rounded text-sm hover:bg-slate-700 transition-colors"><Download size={14} /> Export Excel {selectedOrderIds.length > 0 && `(${selectedOrderIds.length})`}</button>
+            <button onClick={exportToCSV} className="flex items-center gap-2 px-3 py-1.5 bg-slate-800 text-white rounded text-sm hover:bg-slate-700 transition-colors">
+              <Download size={14} /> Export Excel {selectedOrderIds.length > 0 && `(${selectedOrderIds.length})`}
+            </button>
           </div>
         </div>
 
@@ -283,7 +307,7 @@ export default function Orders() {
                 <th className="px-4 py-3">Customer Info</th>
                 <th className="px-4 py-3">Shipping To</th>
                 <th className="px-4 py-3">Payment</th>
-                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3">Order Status</th>
                 <th className="px-4 py-3 text-right">Action</th>
               </tr>
             </thead>
@@ -314,20 +338,28 @@ export default function Orders() {
                       <td className="px-4 py-4">
                         <div className="text-slate-800 text-xs uppercase font-semibold">{order.payment_method === 'qr' ? 'Bank Transfer' : order.payment_method}</div>
                         <div className="flex gap-1 mt-1">
-                          {order.payment_method !== 'cod' && <span className="inline-block px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-medium">Paid</span>}
                           <span className="inline-block px-2 py-0.5 bg-slate-100 text-slate-700 rounded-full text-[10px] font-bold uppercase">{order.currency || 'USD'}</span>
                         </div>
                       </td>
                       <td className="px-4 py-4">
-                        <span className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wider uppercase border ${
-                          order.status === 'delivered' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 
-                          order.status === 'cancelled' ? 'bg-red-50 text-red-700 border-red-200' :
-                          order.status === 'shipping' ? 'bg-blue-50 text-blue-700 border-blue-200' :
-                          order.status === 'packed' ? 'bg-purple-50 text-purple-700 border-purple-200' :
-                          'bg-amber-50 text-amber-700 border-amber-200'
-                        }`}>
-                          {order.status || 'Pending'}
-                        </span>
+                        <div className="flex flex-col gap-1.5 items-start">
+                          <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold tracking-wider uppercase border ${
+                            order.fulfilment_status === 'Delivered' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 
+                            order.fulfilment_status === 'Cancelled' ? 'bg-red-50 text-red-700 border-red-200' :
+                            order.fulfilment_status === 'Shipped / Out for Delivery' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                            order.fulfilment_status === 'Packed' ? 'bg-purple-50 text-purple-700 border-purple-200' :
+                            order.fulfilment_status === 'Picking' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' :
+                            'bg-slate-50 text-slate-700 border-slate-200'
+                          }`}>
+                            {order.fulfilment_status || 'Unconfirmed'}
+                          </span>
+                          <span className={`text-[10px] font-bold uppercase ${
+                            order.payment_status === 'Paid' ? 'text-emerald-600' : 
+                            order.payment_status === 'Refunded' ? 'text-red-600' : 'text-amber-600'
+                          }`}>
+                            Pay: {order.payment_status || 'Unpaid'}
+                          </span>
+                        </div>
                       </td>
                       <td className="px-4 py-4">
                         <div className="flex items-center justify-end gap-2 text-slate-400">
@@ -360,6 +392,9 @@ export default function Orders() {
               <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-white shrink-0">
                 <div className="flex items-center gap-4">
                   <h2 className="text-xl font-display font-bold text-slate-900">ORDER #MA-{selectedOrder.id.slice(-8).toUpperCase()}</h2>
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500 bg-slate-200 border border-slate-300 px-3 py-1 rounded-full">
+                    {selectedOrder.commercial_status}
+                  </span>
                   <span className="text-sm text-slate-500 bg-slate-100 px-3 py-1 rounded-full">Placed on {formatDateTime(selectedOrder.created_at)}</span>
                 </div>
                 <div className="flex items-center gap-3">
@@ -400,16 +435,44 @@ export default function Orders() {
                     </div>
                   </div>
 
-                  <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+                  {/* Payment Details */}
+                  <div className="bg-white rounded-lg border border-slate-200 overflow-hidden shadow-sm">
                     <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center gap-2"><CreditCard size={16} className="text-slate-500" /><span className="text-xs font-bold text-slate-700 uppercase tracking-wider">Payment Details</span></div>
                     <div className="p-4 space-y-4">
-                      <div><p className="text-[10px] uppercase text-slate-400 font-semibold mb-1">Order Reference</p><p className="text-sm font-semibold text-slate-900">MA-{selectedOrder.id.slice(-8).toUpperCase()}</p></div>
                       <div><p className="text-[10px] uppercase text-slate-400 font-semibold mb-1">Payment Method</p><p className="text-sm font-semibold text-slate-900 uppercase">{selectedOrder.payment_method === 'qr' ? 'Bank Transfer (QR)' : 'Cash on Delivery'}</p></div>
                       <div><p className="text-[10px] uppercase text-slate-400 font-semibold mb-1">Currency</p><p className="text-sm font-bold text-slate-900 uppercase">{selectedOrder.currency || 'USD'}</p></div>
-                      {selectedOrder.transaction_reference && <div><p className="text-[10px] uppercase text-slate-400 font-semibold mb-1">Bank Ref</p><p className="text-sm font-mono text-slate-600">{selectedOrder.transaction_reference}</p></div>}
-                      <div><p className="text-[10px] uppercase text-slate-400 font-semibold mb-1">Status</p><span className="inline-block px-2 py-0.5 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded text-xs font-semibold">{selectedOrder.payment_method === 'cod' ? 'Pending COD' : 'Paid'}</span></div>
+                      <div>
+                        <p className="text-[10px] uppercase text-slate-400 font-semibold mb-1">Payment Status</p>
+                        <span className={`inline-block px-2 py-0.5 border rounded text-xs font-semibold ${selectedOrder.payment_status === 'Paid' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
+                          {selectedOrder.payment_status}
+                        </span>
+                      </div>
                     </div>
                   </div>
+
+                  {/* Customer Payment Receipt Viewer */}
+                  {selectedOrder.payment_method === 'qr' && (
+                    <div className="bg-white rounded-lg border border-slate-200 overflow-hidden shadow-sm">
+                      <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center gap-2">
+                        <CreditCard size={16} className="text-slate-500" />
+                        <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">Customer Receipt</span>
+                      </div>
+                      <div className="p-4 text-center">
+                        {selectedOrder.transaction_receipt_url ? (
+                          <a href={selectedOrder.transaction_receipt_url} target="_blank" rel="noreferrer" className="block rounded-lg overflow-hidden border border-slate-200 hover:opacity-90 transition-opacity bg-slate-50 p-2">
+                            <img src={selectedOrder.transaction_receipt_url} alt="Payment Receipt" className="w-full object-contain max-h-48 rounded" />
+                            <div className="text-[10px] font-medium text-slate-500 mt-2 pb-1">Click to view full size</div>
+                          </a>
+                        ) : (
+                          <div className="border-2 border-dashed border-slate-200 rounded-lg p-6 bg-slate-50 flex flex-col items-center">
+                            <AlertTriangle size={24} className="text-amber-400 mb-2" />
+                            <p className="text-sm font-semibold text-slate-700">No receipt uploaded</p>
+                            <p className="text-[10px] text-slate-500 mt-1">Customer has not submitted payment proof.</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Internal Proof Box */}
                   <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
@@ -491,7 +554,6 @@ export default function Orders() {
                           <tr>
                             <td colSpan={5} className="px-6 py-8 text-center text-slate-500 bg-slate-50">
                               <p className="font-semibold text-sm">No items found for this order.</p>
-                              <p className="text-xs mt-1 max-w-sm mx-auto">This order was saved without products. There is likely an issue in your Checkout logic preventing cart items from being saved to the database.</p>
                             </td>
                           </tr>
                         )}
@@ -506,34 +568,62 @@ export default function Orders() {
                     </div>
                   </div>
 
-                  {/* Status Timeline */}
-                  <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+                  {/* STRICT 3-DIMENSIONAL WORKFLOW */}
+                  <div className="bg-white rounded-lg border border-slate-200 overflow-hidden shadow-sm">
                     <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
-                      <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Order Status</h3>
+                      <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Operations Workflow</h3>
                     </div>
                     
                     <div className="p-8">
                       <div className="relative border-l-2 border-slate-200 ml-4 space-y-10 pb-4">
                         
-                        {/* 1. Pending (MARK AS PACKED ENFORCEMENT) */}
+                        {/* 1. Payment Verification */}
                         <div className="relative pl-8">
-                          <div className="absolute -left-[17px] top-0 bg-slate-800 text-white w-8 h-8 rounded-full flex items-center justify-center shadow-[0_0_0_4px_white]"><Package size={14} /></div>
+                          <div className={`absolute -left-[17px] top-0 w-8 h-8 rounded-full flex items-center justify-center shadow-[0_0_0_4px_white] ${selectedOrder.payment_status === 'Paid' ? 'bg-emerald-500 text-white' : 'bg-amber-500 text-white'}`}><CreditCard size={14} /></div>
                           <div>
-                            <h4 className="font-bold text-slate-900">PROCESSING (Pending)</h4>
-                            <p className="text-sm text-slate-500 mt-1">Order Placed</p>
-                            <p className="text-xs text-slate-400 mt-0.5">{formatDateTime(selectedOrder.created_at)}</p>
+                            <h4 className={`font-bold ${selectedOrder.payment_status === 'Paid' ? 'text-emerald-700' : 'text-amber-600'}`}>
+                              {selectedOrder.payment_status === 'Paid' ? 'PAYMENT VERIFIED' : 'PENDING VERIFICATION'}
+                            </h4>
+                            <p className="text-xs text-slate-400 mt-0.5">Order Placed: {formatDateTime(selectedOrder.created_at)}</p>
                             
-                            {selectedOrder.status === 'pending' && (
+                            {(selectedOrder.payment_status === 'Unpaid' || selectedOrder.payment_status === 'Pending Verification') && (
+                              <div className="mt-4">
+                                {!selectedOrder.transaction_receipt_url && selectedOrder.payment_method === 'qr' && (
+                                  <p className="text-[10px] text-amber-600 font-semibold mb-2 flex items-center gap-1.5">
+                                    <AlertTriangle size={12} /> Awaiting customer receipt upload
+                                  </p>
+                                )}
+                                <button 
+                                  onClick={() => advanceStatus('approve_payment')} 
+                                  disabled={updateStatusMutation.isPending || (!selectedOrder.transaction_receipt_url && selectedOrder.payment_method === 'qr')} 
+                                  className="text-xs bg-amber-500 text-white px-5 py-2 rounded shadow-sm hover:bg-amber-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  {updateStatusMutation.isPending ? 'Updating...' : 'Approve Payment'}
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* 2. Picking / Packing */}
+                        <div className={`relative pl-8 ${selectedOrder.payment_status !== 'Paid' ? 'opacity-40' : ''}`}>
+                          <div className={`absolute -left-[17px] top-0 w-8 h-8 rounded-full flex items-center justify-center shadow-[0_0_0_4px_white] ${selectedOrder.fulfilment_status === 'Picking' ? 'bg-indigo-500 text-white shadow-indigo-200' : (selectedOrder.fulfilment_status !== 'Unconfirmed' ? 'bg-slate-800 text-white' : 'bg-slate-100 border border-slate-300 text-slate-400')}`}><Package size={14} /></div>
+                          <div>
+                            <h4 className={`font-bold ${selectedOrder.fulfilment_status === 'Picking' ? 'text-indigo-600' : (selectedOrder.fulfilment_status !== 'Unconfirmed' ? 'text-slate-900' : 'text-slate-500')}`}>
+                              PROCESSING (Picking Order)
+                            </h4>
+                            
+                            {selectedOrder.fulfilment_status === 'Picking' && (
                               <div className="mt-4">
                                 {!selectedOrder.internal_proof_url && (
-                                  <p className="text-[10px] text-destructive font-semibold mb-1.5 flex items-center gap-1.5">
+                                  <p className="text-[10px] text-destructive font-semibold mb-2 flex items-center gap-1.5">
                                     <AlertTriangle size={12} /> Upload Internal Proof photo to proceed
                                   </p>
                                 )}
                                 <button 
-                                  onClick={() => advanceStatus('pending')} 
+                                  onClick={() => advanceStatus('mark_packed')} 
                                   disabled={updateStatusMutation.isPending || !selectedOrder.internal_proof_url} 
-                                  className="text-xs bg-slate-800 text-white px-4 py-2 rounded hover:bg-slate-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                  className="text-xs bg-indigo-500 text-white px-5 py-2 rounded shadow-sm hover:bg-indigo-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                   {updateStatusMutation.isPending ? 'Updating...' : 'Mark as Packed'}
                                 </button>
@@ -542,47 +632,45 @@ export default function Orders() {
                           </div>
                         </div>
 
-                        {/* 2. Packed */}
-                        <div className={`relative pl-8 ${!selectedOrder.packed_at && selectedOrder.status !== 'packed' && selectedOrder.status !== 'shipping' && selectedOrder.status !== 'delivered' ? 'opacity-40' : ''}`}>
-                          <div className={`absolute -left-[17px] top-0 w-8 h-8 rounded-full flex items-center justify-center shadow-[0_0_0_4px_white] ${selectedOrder.packed_at ? 'bg-slate-800 text-white' : 'bg-slate-100 border border-slate-300 text-slate-400'}`}><Package size={14} /></div>
+                        {/* 3. Packed */}
+                        <div className={`relative pl-8 ${selectedOrder.fulfilment_status === 'Unconfirmed' || selectedOrder.fulfilment_status === 'Picking' ? 'opacity-40' : ''}`}>
+                          <div className={`absolute -left-[17px] top-0 w-8 h-8 rounded-full flex items-center justify-center shadow-[0_0_0_4px_white] ${selectedOrder.fulfilment_status === 'Packed' || selectedOrder.fulfilment_status === 'Shipped / Out for Delivery' || selectedOrder.fulfilment_status === 'Delivered' ? 'bg-slate-800 text-white' : 'bg-slate-100 border border-slate-300 text-slate-400'}`}><Package size={14} /></div>
                           <div>
-                            <h4 className={`font-bold ${selectedOrder.packed_at ? 'text-slate-900' : 'text-slate-500'}`}>PACKED (Ready for collection)</h4>
+                            <h4 className={`font-bold ${selectedOrder.fulfilment_status === 'Packed' || selectedOrder.fulfilment_status === 'Shipped / Out for Delivery' || selectedOrder.fulfilment_status === 'Delivered' ? 'text-slate-900' : 'text-slate-500'}`}>
+                              PACKED (Ready for collection)
+                            </h4>
                             {selectedOrder.packed_at && (
-                              <>
-                                <p className="text-sm text-slate-500 mt-1">Status updated from PROCESSING to PACKED</p>
-                                <p className="text-xs text-slate-400 mt-0.5">{formatDateTime(selectedOrder.packed_at)}</p>
-                              </>
+                              <p className="text-xs text-slate-400 mt-0.5">{formatDateTime(selectedOrder.packed_at)}</p>
                             )}
-                            {selectedOrder.status === 'packed' && (
-                              <button onClick={() => advanceStatus('packed')} disabled={updateStatusMutation.isPending} className="mt-3 text-xs bg-slate-800 text-white px-4 py-1.5 rounded hover:bg-slate-700 transition-colors disabled:opacity-50">
+                            {selectedOrder.fulfilment_status === 'Packed' && (
+                              <button onClick={() => advanceStatus('mark_shipped')} disabled={updateStatusMutation.isPending} className="mt-3 text-xs bg-slate-800 text-white px-5 py-2 rounded shadow-sm hover:bg-slate-700 transition-all disabled:opacity-50">
                                 {updateStatusMutation.isPending ? 'Updating...' : 'Mark as Shipped'}
                               </button>
                             )}
                           </div>
                         </div>
 
-                        {/* 3. Shipping (MARK AS DELIVERED ENFORCEMENT) */}
-                        <div className={`relative pl-8 ${!selectedOrder.shipped_at && selectedOrder.status !== 'shipping' && selectedOrder.status !== 'delivered' ? 'opacity-40' : ''}`}>
-                          <div className={`absolute -left-[17px] top-0 w-8 h-8 rounded-full flex items-center justify-center shadow-[0_0_0_4px_white] ${selectedOrder.shipped_at ? 'bg-blue-600 text-white' : 'bg-slate-100 border border-slate-300 text-slate-400'}`}><Truck size={14} /></div>
+                        {/* 4. Shipping */}
+                        <div className={`relative pl-8 ${selectedOrder.fulfilment_status !== 'Shipped / Out for Delivery' && selectedOrder.fulfilment_status !== 'Delivered' ? 'opacity-40' : ''}`}>
+                          <div className={`absolute -left-[17px] top-0 w-8 h-8 rounded-full flex items-center justify-center shadow-[0_0_0_4px_white] ${selectedOrder.fulfilment_status === 'Shipped / Out for Delivery' || selectedOrder.fulfilment_status === 'Delivered' ? 'bg-blue-600 text-white' : 'bg-slate-100 border border-slate-300 text-slate-400'}`}><Truck size={14} /></div>
                           <div>
-                            <h4 className={`font-bold ${selectedOrder.shipped_at ? 'text-blue-700' : 'text-slate-500'}`}>SHIPPING (Handed to courier)</h4>
+                            <h4 className={`font-bold ${selectedOrder.fulfilment_status === 'Shipped / Out for Delivery' || selectedOrder.fulfilment_status === 'Delivered' ? 'text-blue-700' : 'text-slate-500'}`}>
+                              SHIPPING (Handed to courier)
+                            </h4>
                             {selectedOrder.shipped_at && (
-                              <>
-                                <p className="text-sm text-slate-500 mt-1">Status updated from PACKED to SHIPPING</p>
-                                <p className="text-xs text-slate-400 mt-0.5">{formatDateTime(selectedOrder.shipped_at)}</p>
-                              </>
+                              <p className="text-xs text-slate-400 mt-0.5">{formatDateTime(selectedOrder.shipped_at)}</p>
                             )}
-                            {selectedOrder.status === 'shipping' && (
+                            {selectedOrder.fulfilment_status === 'Shipped / Out for Delivery' && (
                               <div className="mt-4">
                                 {!selectedOrder.delivery_proof_url && (
-                                  <p className="text-[10px] text-destructive font-semibold mb-1.5 flex items-center gap-1.5">
+                                  <p className="text-[10px] text-destructive font-semibold mb-2 flex items-center gap-1.5">
                                     <AlertTriangle size={12} /> Upload Delivery Proof photo to proceed
                                   </p>
                                 )}
                                 <button 
-                                  onClick={() => advanceStatus('shipping')} 
+                                  onClick={() => advanceStatus('mark_delivered')} 
                                   disabled={updateStatusMutation.isPending || !selectedOrder.delivery_proof_url} 
-                                  className="text-xs bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                  className="text-xs bg-blue-600 text-white px-5 py-2 rounded shadow-sm hover:bg-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                   {updateStatusMutation.isPending ? 'Updating...' : 'Mark as Delivered'}
                                 </button>
@@ -591,16 +679,15 @@ export default function Orders() {
                           </div>
                         </div>
 
-                        {/* 4. Delivered */}
-                        <div className={`relative pl-8 ${!selectedOrder.delivered_at && selectedOrder.status !== 'delivered' ? 'opacity-40' : ''}`}>
-                          <div className={`absolute -left-[17px] top-0 w-8 h-8 rounded-full flex items-center justify-center shadow-[0_0_0_4px_white] ${selectedOrder.delivered_at ? 'bg-emerald-500 text-white' : 'bg-slate-100 border border-slate-300 text-slate-400'}`}><CheckCircle size={14} /></div>
+                        {/* 5. Delivered */}
+                        <div className={`relative pl-8 ${selectedOrder.fulfilment_status !== 'Delivered' ? 'opacity-40' : ''}`}>
+                          <div className={`absolute -left-[17px] top-0 w-8 h-8 rounded-full flex items-center justify-center shadow-[0_0_0_4px_white] ${selectedOrder.fulfilment_status === 'Delivered' ? 'bg-emerald-500 text-white' : 'bg-slate-100 border border-slate-300 text-slate-400'}`}><CheckCircle size={14} /></div>
                           <div>
-                            <h4 className={`font-bold ${selectedOrder.delivered_at ? 'text-emerald-600' : 'text-slate-500'}`}>DELIVERED (Completed)</h4>
+                            <h4 className={`font-bold ${selectedOrder.fulfilment_status === 'Delivered' ? 'text-emerald-600' : 'text-slate-500'}`}>
+                              DELIVERED (Completed)
+                            </h4>
                             {selectedOrder.delivered_at && (
-                              <>
-                                <p className="text-sm text-slate-500 mt-1">Status updated from SHIPPING to DELIVERED</p>
-                                <p className="text-xs text-slate-400 mt-0.5">{formatDateTime(selectedOrder.delivered_at)}</p>
-                              </>
+                              <p className="text-xs text-slate-400 mt-0.5">{formatDateTime(selectedOrder.delivered_at)}</p>
                             )}
                           </div>
                         </div>
@@ -617,7 +704,6 @@ export default function Orders() {
         )}
       </div>
 
-      {/* RENDER ACTIVE PRINT TEMPLATE */}
       {printMode === 'label' && <ShippingLabel order={selectedOrder} />}
       {printMode === 'receipt' && <ReceiptTemplate order={selectedOrder} />}
     </>

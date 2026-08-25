@@ -1,5 +1,6 @@
+// @ts-nocheck
 import React, { useState, useEffect } from 'react';
-import { RefreshCcw, Download, Search, Plus, Trash2, Edit, X, ChevronLeft, ChevronRight, Package, Filter, UploadCloud, Save } from 'lucide-react';
+import { RefreshCcw, Download, Search, Plus, Trash2, Edit, X, ChevronLeft, ChevronRight, Package, Filter, UploadCloud, Save, Info } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
@@ -46,9 +47,6 @@ const uploadImageToSupabase = async (/** @type {File} */ file) => {
 };
 
 // --- REUSABLE TOGGLE SWITCH ---
-/**
- * @param {{ checked: boolean, onChange: (val: boolean) => void, label?: string, labelLeft?: string }} props
- */
 const ToggleSwitch = ({ checked, onChange, label = '', labelLeft = '' }) => (
   <div className="flex items-center justify-between">
     {labelLeft && <span className="text-sm font-semibold text-slate-800">{labelLeft}</span>}
@@ -60,31 +58,28 @@ const ToggleSwitch = ({ checked, onChange, label = '', labelLeft = '' }) => (
   </div>
 );
 
-// --- MAIN COMPONENT ---
 export default function Products() {
-  const [view, setView] = useState('list'); // 'list' | 'form'
+  const [view, setView] = useState('list'); 
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('All Categories');
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedProductIds, setSelectedProductIds] = useState(/** @type {string[]} */ ([]));
   const [productToDelete, setProductToDelete] = useState(/** @type {{id: string, name: string} | null} */ (null));
   
-  // UI Tabs State
   const [activeTopTab, setActiveTopTab] = useState('General Info');
-  const [activeLangTab, setActiveLangTab] = useState('english'); // 'english' | 'khmer'
+  const [activeLangTab, setActiveLangTab] = useState('english'); 
 
-  const TOP_TABS = ["General Info", "Product Option", "Description", "How it works", "Key Ingredients", "Results", "FAQs", "Shipping", "Return Policy"];
+  const TOP_TABS = ["General Info", "Description", "How it works", "Key Ingredients", "FAQs"];
 
   const queryClient = useQueryClient();
 
   const defaultForm = { 
     id: null, name: '', name_khmer: '', code: '', overview: '', overview_khmer: '', 
-    price: '', discount: '', product_type: '', sizes: '', stock: '', tags: '',
-    is_best_seller: false, product_set: '', show_in_search: true, is_promotion: false, 
-    featured: false, status: true, release_date: '', ordering: 0,
-    category_list: /** @type {string[]} */ ([]), // Array for checkboxes
-    images: /** @type {string[]} */ ([]), // URLs
-    imageFiles: /** @type {File[]} */ ([]) // Files to upload
+    product_type: '', tags: '', is_best_seller: false, product_set: '', 
+    show_in_search: true, is_promotion: false, featured: false, status: true, 
+    release_date: '', ordering: 0, category_list: /** @type {string[]} */ ([]), 
+    images: /** @type {string[]} */ ([]), imageFiles: /** @type {File[]} */ ([]),
+    variants: [{ id: null, sku: '', size: '', scent: '', price: '', discount_price: '', cost: '', is_active: true }]
   };
   
   const [form, setForm] = useState(defaultForm);
@@ -98,7 +93,6 @@ export default function Products() {
     }
   });
 
-  // Fetch dynamic Product Types
   const { data: dbProductTypes = [] } = useQuery({
     queryKey: ['admin-product-types-list'],
     queryFn: async () => {
@@ -107,10 +101,14 @@ export default function Products() {
     }
   });
 
+  // Fetch products WITH their nested variants
   const { data: products = [], isLoading, refetch, isFetching } = useQuery({
-    queryKey: ['admin-products-list'],
+    queryKey: ['admin-products-variants-list'],
     queryFn: async () => {
-      const { data, error } = await supabase.from('products').select('*').order('created_at', { ascending: false });
+      const { data, error } = await supabase
+        .from('products')
+        .select('*, product_variants(*)')
+        .order('created_at', { ascending: false });
       if (error) throw error;
       return data || [];
     },
@@ -120,59 +118,71 @@ export default function Products() {
   // MUTATIONS
   const saveProductMutation = useMutation({
     mutationFn: async () => {
-      if (!form.name || !form.price) throw new Error("Please fill in the product name and price.");
+      if (!form.name) throw new Error("Please fill in the product name.");
+      if (form.variants.length === 0) throw new Error("A product must have at least one variant.");
+      if (form.variants.some(v => !v.sku || !v.price)) throw new Error("All variants must have a SKU and Price.");
 
+      // Image Handling
       let uploadedUrls = /** @type {string[]} */ ([]);
       if (form.imageFiles.length > 0) {
         uploadedUrls = await Promise.all(form.imageFiles.map(file => uploadImageToSupabase(file)));
       }
-
-      const finalImages = [
-        ...form.images.filter(url => !url.startsWith('blob:')),
-        ...uploadedUrls
-      ];
-
+      const finalImages = [...form.images.filter(url => !url.startsWith('blob:')), ...uploadedUrls];
       const primaryImage = finalImages.length > 0 ? finalImages[0] : 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=300&q=80';
 
-      const payload = {
-        name: form.name,
-        name_khmer: form.name_khmer || null,
-        code: form.code || `PRD-${Math.floor(1000 + Math.random() * 9000)}`,
-        overview: form.overview || null,
-        overview_khmer: form.overview_khmer || null,
-        price: parseFloat(form.price) || 0,
-        discount: parseFloat(form.discount) || 0,
-        stock: parseInt(form.stock) || 0,
-        product_type: form.product_type || null,
-        sizes: form.sizes ? [form.sizes] : null,
-        tags: form.tags ? form.tags.split(',').map(t => t.trim()).filter(Boolean) : null,
-        is_best_seller: form.is_best_seller,
-        product_set: form.product_set || null,
-        show_in_search: form.show_in_search,
-        is_promotion: form.is_promotion,
-        featured: form.featured,
-        status: form.status ? 'active' : 'inactive',
-        release_date: form.release_date || null,
-        ordering: parseInt(form.ordering.toString()) || 0,
-        category: form.category_list.join(', ') || 'General',
-        image: primaryImage,
-        images: finalImages.length > 0 ? finalImages : null
+      // 1. Save Base Product
+      const productPayload = {
+        name: form.name, name_khmer: form.name_khmer || null, code: form.code || `PRD-${Math.floor(1000 + Math.random() * 9000)}`,
+        overview: form.overview || null, overview_khmer: form.overview_khmer || null,
+        product_type: form.product_type || null, tags: form.tags ? form.tags.split(',').map(t => t.trim()).filter(Boolean) : null,
+        is_best_seller: form.is_best_seller, product_set: form.product_set || null, show_in_search: form.show_in_search,
+        is_promotion: form.is_promotion, featured: form.featured, status: form.status ? 'active' : 'inactive',
+        release_date: form.release_date || null, ordering: parseInt(form.ordering.toString()) || 0,
+        category: form.category_list.join(', ') || 'General', image: primaryImage, images: finalImages.length > 0 ? finalImages : null
       };
 
-      if (form.id) {
-        const { error } = await supabase.from('products').update(payload).eq('id', form.id);
+      let finalProductId = form.id;
+      if (finalProductId) {
+        const { error } = await supabase.from('products').update(productPayload).eq('id', finalProductId);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from('products').insert([payload]);
+        const { data, error } = await supabase.from('products').insert([productPayload]).select('id').single();
         if (error) throw error;
+        finalProductId = data.id;
       }
+
+      // 2. Save Associated Variants
+      const variantsPayload = form.variants.map(v => {
+        const variantObj = {
+          product_id: finalProductId,
+          sku: v.sku,
+          size: v.size || null,
+          scent: v.scent || null,
+          price: parseFloat(v.price) || 0,
+          discount_price: v.discount_price ? parseFloat(v.discount_price) : null,
+          cost: parseFloat(v.cost) || 0,
+          is_active: v.is_active
+        };
+        
+        // FIXED: Only include ID if it is explicitly NOT null.
+        // This prevents the "violates not-null constraint" DB error on new variants.
+        if (v.id) {
+          variantObj.id = v.id;
+        }
+        
+        return variantObj;
+      });
+
+      // Upsert variants (Updates existing IDs, inserts new ones)
+      const { error: variantsError } = await supabase.from('product_variants').upsert(variantsPayload, { onConflict: 'id' });
+      if (variantsError) throw variantsError;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-products-list'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-products-variants-list'] });
       setView('list');
       setForm(defaultForm);
     },
-    onError: (err) => alert(err.message)
+    onError: (err) => alert("Error saving product: " + err.message)
   });
 
   const deleteProductMutation = useMutation({
@@ -181,7 +191,7 @@ export default function Products() {
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-products-list'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-products-variants-list'] });
       setSelectedProductIds([]); 
       setProductToDelete(null); 
     }
@@ -215,22 +225,28 @@ export default function Products() {
   const confirmDelete = () => { if (productToDelete) deleteProductMutation.mutate(productToDelete.id); };
 
   const handleEditOpen = (/** @type {any} */ p) => {
+    // Legacy migration safeguard: If product has no variants in DB, build one from its old flat fields
+    let mappedVariants = p.product_variants || [];
+    if (mappedVariants.length === 0) {
+      mappedVariants = [{
+        id: null, sku: `${p.code}-01`, size: p.sizes ? String(p.sizes) : '', scent: '', 
+        price: p.price || '', discount_price: p.discount || '', cost: '0', is_active: true
+      }];
+    }
+
     setForm({
       ...defaultForm,
       id: p.id, name: p.name || '', name_khmer: p.name_khmer || '', code: p.code || '', 
       overview: p.overview || '', overview_khmer: p.overview_khmer || '', 
-      price: p.price?.toString() || '', discount: p.discount?.toString() || '', 
-      product_type: p.product_type || '', 
-      sizes: Array.isArray(p.sizes) ? (p.sizes[0] || '') : (p.sizes || ''), 
-      stock: p.stock?.toString() || '0', 
-      tags: Array.isArray(p.tags) ? p.tags.join(', ') : (p.tags || ''), 
+      product_type: p.product_type || '', tags: Array.isArray(p.tags) ? p.tags.join(', ') : (p.tags || ''), 
       is_best_seller: !!p.is_best_seller, product_set: p.product_set || '', 
       show_in_search: p.show_in_search !== false, is_promotion: !!p.is_promotion, 
       featured: !!p.featured, status: p.status !== 'inactive', 
       release_date: p.release_date ? p.release_date.substring(0, 16) : '', ordering: p.ordering || 0,
       category_list: p.category ? p.category.split(',').map((/** @type {string} */ s) => s.trim()) : [],
       images: p.images && p.images.length > 0 ? p.images : (p.image ? [p.image] : []),
-      imageFiles: []
+      imageFiles: [],
+      variants: mappedVariants
     });
     setActiveTopTab('General Info');
     setView('form');
@@ -252,7 +268,6 @@ export default function Products() {
       const newImages = [...prev.images];
       const newFiles = [...prev.imageFiles];
       const removedUrl = newImages.splice(index, 1)[0];
-      
       if (removedUrl.startsWith('blob:')) {
         newFiles.splice(index - (prev.images.length - prev.imageFiles.length), 1);
         URL.revokeObjectURL(removedUrl);
@@ -261,20 +276,24 @@ export default function Products() {
     });
   };
 
-  const exportToCSV = () => {
-    const listToExport = selectedProductIds.length > 0 ? products.filter((/** @type {any} */ p) => selectedProductIds.includes(p.id)) : filteredProducts;
-    if (listToExport.length === 0) return alert("No data to export!");
-    const headers = ['Product Code', 'Product Name', 'Category', 'Price', 'Discount', 'Stock', 'Status'];
-    const rows = listToExport.map((/** @type {any} */ p) => [
-      p.code || 'N/A', p.name || 'N/A', p.category || 'N/A', p.price || 0, p.discount || 0, p.stock, p.status || 'ACTIVE'
-    ].map(field => `"${String(field).replace(/"/g, '""')}"`).join(','));
-    const blob = new Blob([[headers.join(','), ...rows].join('\n')], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.setAttribute('download', `products_export_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  // VARIANT HANDLERS
+  const addVariant = () => {
+    setForm(prev => ({
+      ...prev,
+      variants: [...prev.variants, { id: null, sku: `${prev.code || 'SKU'}-${prev.variants.length + 1}`, size: '', scent: '', price: '', discount_price: '', cost: '0', is_active: true }]
+    }));
+  };
+
+  const updateVariant = (/** @type {number} */ index, /** @type {string} */ field, /** @type {any} */ value) => {
+    setForm(prev => {
+      const updated = [...prev.variants];
+      updated[index] = { ...updated[index], [field]: value };
+      return { ...prev, variants: updated };
+    });
+  };
+
+  const removeVariant = (/** @type {number} */ index) => {
+    setForm(prev => ({ ...prev, variants: prev.variants.filter((_, i) => i !== index) }));
   };
 
   return (
@@ -283,7 +302,6 @@ export default function Products() {
       {/* -------------------- LIST VIEW -------------------- */}
       {view === 'list' && (
         <div className="flex-1 flex flex-col overflow-hidden animate-in fade-in">
-          {/* Toolbar */}
           <div className="p-4 border-b border-slate-200 flex flex-wrap gap-4 items-center justify-between bg-slate-50/50 shrink-0">
             <div className="flex gap-3 flex-1 max-w-2xl">
               <div className="relative flex-1">
@@ -300,7 +318,6 @@ export default function Products() {
 
             <div className="flex gap-2">
               <button onClick={() => refetch()} className="flex items-center gap-2 px-3 py-2 border border-slate-300 rounded text-sm hover:bg-slate-50 transition-colors bg-white"><RefreshCcw size={14} className={isFetching ? "animate-spin" : ""} /> Refresh</button>
-              <button onClick={exportToCSV} className="flex items-center gap-2 px-3 py-2 border border-slate-300 rounded text-sm hover:bg-slate-50 transition-colors bg-white"><Download size={14} /> {selectedProductIds.length > 0 ? `Export (${selectedProductIds.length})` : 'Export Excel'}</button>
               <button onClick={() => { setForm(defaultForm); setView('form'); }} className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded text-sm font-medium hover:bg-slate-800 transition-colors"><Plus size={16} /> Create Product</button>
             </div>
           </div>
@@ -312,24 +329,25 @@ export default function Products() {
                 <tr>
                   <th className="px-6 py-4 w-10"><input type="checkbox" checked={paginatedProducts.length > 0 && selectedProductIds.length === paginatedProducts.length} onChange={toggleSelectAll} className="rounded border-slate-300 cursor-pointer"/></th>
                   <th className="px-6 py-4">Product Code</th>
-                  <th className="px-6 py-4">Product</th>
-                  <th className="px-6 py-4 text-right">Price($)</th>
-                  <th className="px-6 py-4 text-right">Discount($)</th>
-                  <th className="px-6 py-4 text-center">Product Stock</th>
+                  <th className="px-6 py-4">Product Name</th>
+                  <th className="px-6 py-4 text-center">Variants</th>
+                  <th className="px-6 py-4 text-right">Base Price</th>
                   <th className="px-6 py-4 text-center">Status</th>
                   <th className="px-6 py-4 text-right">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {isLoading ? (
-                  <tr><td colSpan={8} className="px-6 py-12 text-center text-slate-500">Loading products...</td></tr>
+                  <tr><td colSpan={7} className="px-6 py-12 text-center text-slate-500">Loading products...</td></tr>
                 ) : paginatedProducts.length === 0 ? (
-                  <tr><td colSpan={8} className="px-6 py-12 text-center text-slate-500">No products found.</td></tr>
+                  <tr><td colSpan={7} className="px-6 py-12 text-center text-slate-500">No products found.</td></tr>
                 ) : (
                   paginatedProducts.map((/** @type {any} */ p) => {
                     const isActive = p.status !== 'inactive';
-                    const isOutOfStock = p.stock <= 0;
                     const isSelected = selectedProductIds.includes(p.id);
+                    const variantCount = p.product_variants ? p.product_variants.length : 0;
+                    const basePrice = p.product_variants?.[0]?.price || p.price || 0;
+
                     return (
                       <tr key={p.id} className={`hover:bg-slate-50/50 ${isSelected ? 'bg-slate-50' : ''}`}>
                         <td className="px-6 py-4"><input type="checkbox" checked={isSelected} onChange={() => toggleSelect(p.id)} className="rounded border-slate-300 cursor-pointer"/></td>
@@ -345,13 +363,12 @@ export default function Products() {
                             </div>
                           </div>
                         </td>
-                        <td className="px-6 py-4 text-right font-medium text-slate-900">${p.price?.toFixed(2)}</td>
-                        <td className="px-6 py-4 text-right text-slate-600">${p.discount?.toFixed(2) || '0.00'}</td>
                         <td className="px-6 py-4 text-center">
-                          <span className={`inline-block px-2.5 py-1 rounded text-xs font-medium border ${isOutOfStock ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-slate-100 text-slate-700 border-slate-200'}`}>
-                            {isOutOfStock ? 'Out of Stock' : `${p.stock} In-Stock`}
+                          <span className="inline-flex items-center justify-center px-2 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded text-xs font-semibold">
+                            {variantCount} SKUs
                           </span>
                         </td>
+                        <td className="px-6 py-4 text-right font-medium text-slate-900">From ${basePrice.toFixed(2)}</td>
                         <td className="px-6 py-4 text-center">
                           <span className={`inline-block px-3 py-1 rounded-full text-[10px] font-semibold tracking-wider uppercase border ${isActive ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-500 border-slate-200'}`}>
                             {isActive ? 'ACTIVE' : 'INACTIVE'}
@@ -370,15 +387,6 @@ export default function Products() {
               </tbody>
             </table>
           </div>
-
-          {/* Pagination */}
-          <div className="px-6 py-4 border-t border-slate-200 bg-white flex items-center justify-between shrink-0">
-            <div className="text-sm text-slate-500">Showing {filteredProducts.length === 0 ? 0 : (currentPage - 1) * ITEMS_PER_PAGE + 1} to {Math.min(currentPage * ITEMS_PER_PAGE, filteredProducts.length)} of {filteredProducts.length} entries</div>
-            <div className="flex gap-2">
-              <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="flex items-center gap-1 px-3 py-1.5 border border-slate-300 rounded text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"><ChevronLeft size={16} /> Previous</button>
-              <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages || totalPages === 0} className="flex items-center gap-1 px-3 py-1.5 border border-slate-300 rounded text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">Next <ChevronRight size={16} /></button>
-            </div>
-          </div>
         </div>
       )}
 
@@ -386,7 +394,6 @@ export default function Products() {
       {view === 'form' && (
         <div className="flex-1 flex flex-col bg-slate-50 overflow-y-auto custom-scrollbar animate-in slide-in-from-right-4 duration-300">
           
-          {/* Header */}
           <div className="p-6 bg-white border-b border-slate-200 flex items-center justify-between sticky top-0 z-20 shrink-0">
             <h1 className="text-2xl font-bold text-slate-900 tracking-wide uppercase">{form.id ? 'EDIT PRODUCT' : 'CREATE PRODUCT'}</h1>
             <div className="flex items-center gap-3">
@@ -400,159 +407,153 @@ export default function Products() {
             </div>
           </div>
 
-          {/* Top Tabs */}
-          <div className="bg-white border-b border-slate-200 px-6 overflow-x-auto custom-scrollbar shrink-0">
-            <div className="flex whitespace-nowrap min-w-max">
-              {TOP_TABS.map(tab => (
-                <button 
-                  key={tab} 
-                  onClick={() => setActiveTopTab(tab)}
-                  className={`px-5 py-4 text-sm font-medium border-b-2 transition-colors ${activeTopTab === tab ? 'border-slate-900 text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
-                >
-                  {tab}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Content Area */}
-          <div className="p-6 md:p-8 flex-1 w-full max-w-[1400px] mx-auto">
-            {activeTopTab === 'General Info' && (
-              <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col md:flex-row">
+          <div className="p-6 md:p-8 flex-1 w-full max-w-[1400px] mx-auto space-y-8">
+            
+            {/* BASE INFO SECTION */}
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col md:flex-row">
+              {/* LEFT COLUMN: Identity & Images */}
+              <div className="w-full md:w-1/2 p-6 md:p-8 border-b md:border-b-0 md:border-r border-slate-200 space-y-6">
+                <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-4 border-b border-slate-100 pb-2">Product Identity</h3>
                 
-                {/* LEFT COLUMN */}
-                <div className="w-full md:w-1/2 p-6 md:p-8 border-b md:border-b-0 md:border-r border-slate-200 space-y-6">
-                  
-                  {/* Language Sub-tabs */}
-                  <div className="flex gap-2 border-b border-slate-200 pb-2">
-                    <button type="button" onClick={() => setActiveLangTab('english')} className={`px-4 py-2 rounded text-sm font-medium transition-colors ${activeLangTab === 'english' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>English</button>
-                    <button type="button" onClick={() => setActiveLangTab('khmer')} className={`px-4 py-2 rounded text-sm font-medium transition-colors ${activeLangTab === 'khmer' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>Khmer</button>
-                  </div>
-
-                  <div><label className="block text-xs font-semibold text-slate-600 uppercase mb-2">Product Code</label><input type="text" value={form.code} onChange={(e) => setForm({...form, code: e.target.value})} placeholder="Enter product code" className="w-full border border-slate-300 rounded p-3 text-sm outline-none focus:border-slate-500" /></div>
-                  
-                  {activeLangTab === 'english' ? (
-                    <>
-                      <div><label className="block text-xs font-semibold text-slate-600 uppercase mb-2">Product Name (English)</label><input type="text" value={form.name} onChange={(e) => setForm({...form, name: e.target.value})} placeholder="Enter English Title" className="w-full border border-slate-300 rounded p-3 text-sm outline-none focus:border-slate-500" /></div>
-                      <div><label className="block text-xs font-semibold text-slate-600 uppercase mb-2">Product Overview (English)</label><textarea value={form.overview} onChange={(e) => setForm({...form, overview: e.target.value})} placeholder="Enter text..." rows={4} className="w-full border border-slate-300 rounded p-3 text-sm outline-none focus:border-slate-500 resize-none" /></div>
-                    </>
-                  ) : (
-                    <>
-                      <div><label className="block text-xs font-semibold text-slate-600 uppercase mb-2">Product Name (Khmer)</label><input type="text" value={form.name_khmer} onChange={(e) => setForm({...form, name_khmer: e.target.value})} placeholder="បញ្ចូលឈ្មោះផលិតផល" className="w-full border border-slate-300 rounded p-3 text-sm outline-none focus:border-slate-500" /></div>
-                      <div><label className="block text-xs font-semibold text-slate-600 uppercase mb-2">Product Overview (Khmer)</label><textarea value={form.overview_khmer} onChange={(e) => setForm({...form, overview_khmer: e.target.value})} placeholder="បញ្ចូលអត្ថបទពិពណ៌នា..." rows={4} className="w-full border border-slate-300 rounded p-3 text-sm outline-none focus:border-slate-500 resize-none" /></div>
-                    </>
-                  )}
-
-                  {/* Multi-Image Uploader */}
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600 uppercase mb-2">Product Images (720 x 960 px)</label>
-                    <div className="border-2 border-dashed border-slate-300 rounded-lg p-8 bg-slate-50 hover:bg-slate-100 transition-colors text-center relative flex flex-col items-center justify-center min-h-[160px]">
-                      <UploadCloud size={32} className="text-slate-400 mb-2" />
-                      <p className="text-sm font-medium text-slate-700">Drag & Drop your images here or <span className="text-blue-600 underline cursor-pointer">Browse</span></p>
-                      <p className="text-xs text-slate-400 mt-1">You can upload multiple images at once</p>
-                      <input type="file" accept="image/*" multiple onChange={handleFilesChange} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
-                    </div>
-                    {/* Image Preview Grid */}
-                    {form.images.length > 0 && (
-                      <div className="grid grid-cols-4 gap-3 mt-4">
-                        {form.images.map((imgUrl, idx) => (
-                          <div key={idx} className="relative aspect-[3/4] rounded overflow-hidden border border-slate-200 bg-slate-50 group">
-                            <img src={imgUrl} alt={`Preview ${idx}`} className="w-full h-full object-cover" />
-                            <button onClick={() => removeImage(idx)} className="absolute top-1 right-1 bg-white/80 hover:bg-white text-rose-500 rounded p-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <X size={14} />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Category Checkboxes */}
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600 uppercase mb-3">Category</label>
-                    <div className="space-y-3">
-                      {dbCategories.map((/** @type {any} */ cat) => (
-                        <label key={cat.title || cat.name} className="flex items-center gap-3 cursor-pointer">
-                          <input 
-                            type="checkbox" 
-                            className="rounded border-slate-300 text-slate-900 focus:ring-slate-900"
-                            checked={form.category_list.includes(cat.title || cat.name)}
-                            onChange={(e) => {
-                              const val = cat.title || cat.name;
-                              if (e.target.checked) setForm({...form, category_list: [...form.category_list, val]});
-                              else setForm({...form, category_list: form.category_list.filter(c => c !== val)});
-                            }}
-                          />
-                          <span className="text-sm text-slate-700">{cat.title || cat.name}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-
+                <div className="flex gap-2 border-b border-slate-200 pb-2">
+                  <button type="button" onClick={() => setActiveLangTab('english')} className={`px-4 py-2 rounded text-sm font-medium transition-colors ${activeLangTab === 'english' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>English</button>
+                  <button type="button" onClick={() => setActiveLangTab('khmer')} className={`px-4 py-2 rounded text-sm font-medium transition-colors ${activeLangTab === 'khmer' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>Khmer</button>
                 </div>
 
-                {/* RIGHT COLUMN */}
-                <div className="w-full md:w-1/2 p-6 md:p-8 space-y-6">
-                  
-                  <div><label className="block text-xs font-semibold text-slate-600 uppercase mb-2">Price ($)</label><input type="number" step="0.01" value={form.price} onChange={(e) => setForm({...form, price: e.target.value})} placeholder="Enter product price" className="w-full border border-slate-300 rounded p-3 text-sm outline-none focus:border-slate-500" /></div>
-                  <div><label className="block text-xs font-semibold text-slate-600 uppercase mb-2">Discount ($)</label><input type="number" step="0.01" value={form.discount} onChange={(e) => setForm({...form, discount: e.target.value})} placeholder="Enter product discount" className="w-full border border-slate-300 rounded p-3 text-sm outline-none focus:border-slate-500" /></div>
-                  
+                <div className="grid grid-cols-2 gap-4">
+                  <div><label className="block text-xs font-semibold text-slate-600 uppercase mb-2">Base Code</label><input type="text" value={form.code} onChange={(e) => setForm({...form, code: e.target.value})} placeholder="e.g., GC-001" className="w-full border border-slate-300 rounded p-3 text-sm outline-none focus:border-slate-500 font-mono" /></div>
                   <div>
                     <label className="block text-xs font-semibold text-slate-600 uppercase mb-2">Product Type</label>
                     <select value={form.product_type} onChange={(e) => setForm({...form, product_type: e.target.value})} className="w-full border border-slate-300 rounded p-3 text-sm bg-white outline-none focus:border-slate-500">
-                      <option value="">Select Product Type...</option>
-                      {dbProductTypes.map((/** @type {any} */ pt) => {
-                        const ptName = pt.title || pt.name || pt.id;
-                        return <option key={pt.id || ptName} value={ptName}>{ptName}</option>
-                      })}
+                      <option value="">Select Type...</option>
+                      {dbProductTypes.map((/** @type {any} */ pt) => <option key={pt.id || pt.name} value={pt.title || pt.name}>{pt.title || pt.name}</option>)}
                     </select>
                   </div>
+                </div>
+                
+                {activeLangTab === 'english' ? (
+                  <>
+                    <div><label className="block text-xs font-semibold text-slate-600 uppercase mb-2">Name (English)</label><input type="text" value={form.name} onChange={(e) => setForm({...form, name: e.target.value})} className="w-full border border-slate-300 rounded p-3 text-sm outline-none focus:border-slate-500" /></div>
+                    <div><label className="block text-xs font-semibold text-slate-600 uppercase mb-2">Overview (English)</label><textarea value={form.overview} onChange={(e) => setForm({...form, overview: e.target.value})} rows={3} className="w-full border border-slate-300 rounded p-3 text-sm outline-none focus:border-slate-500 resize-none" /></div>
+                  </>
+                ) : (
+                  <>
+                    <div><label className="block text-xs font-semibold text-slate-600 uppercase mb-2">Name (Khmer)</label><input type="text" value={form.name_khmer} onChange={(e) => setForm({...form, name_khmer: e.target.value})} className="w-full border border-slate-300 rounded p-3 text-sm outline-none focus:border-slate-500" /></div>
+                    <div><label className="block text-xs font-semibold text-slate-600 uppercase mb-2">Overview (Khmer)</label><textarea value={form.overview_khmer} onChange={(e) => setForm({...form, overview_khmer: e.target.value})} rows={3} className="w-full border border-slate-300 rounded p-3 text-sm outline-none focus:border-slate-500 resize-none" /></div>
+                  </>
+                )}
 
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600 uppercase mb-2">Sizes</label>
-                    <select value={form.sizes} onChange={(e) => setForm({...form, sizes: e.target.value})} className="w-full border border-slate-300 rounded p-3 text-sm bg-white outline-none focus:border-slate-500">
-                      <option value="">Select size...</option>
-                      <option value="S">Small (S)</option>
-                      <option value="M">Medium (M)</option>
-                      <option value="L">Large (L)</option>
-                      <option value="OS">One Size (OS)</option>
-                    </select>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 uppercase mb-2">Product Images (720 x 960 px)</label>
+                  <div className="border-2 border-dashed border-slate-300 rounded-lg p-6 bg-slate-50 hover:bg-slate-100 transition-colors text-center relative flex flex-col items-center justify-center min-h-[140px]">
+                    <UploadCloud size={24} className="text-slate-400 mb-2" />
+                    <p className="text-sm font-medium text-slate-700">Drag & Drop images</p>
+                    <input type="file" accept="image/*" multiple onChange={handleFilesChange} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
                   </div>
-
-                  <div><label className="block text-xs font-semibold text-slate-600 uppercase mb-2">Quantity</label><input type="number" value={form.stock} onChange={(e) => setForm({...form, stock: e.target.value})} placeholder="Enter product quantity" className="w-full border border-slate-300 rounded p-3 text-sm outline-none focus:border-slate-500" /></div>
-                  
-                  <div><label className="block text-xs font-semibold text-slate-600 uppercase mb-2">Tags</label><input type="text" value={form.tags} onChange={(e) => setForm({...form, tags: e.target.value})} placeholder="Example: tag-1, tag-2, tag-3, ..." className="w-full border border-slate-300 rounded p-3 text-sm outline-none focus:border-slate-500" /></div>
-
-                  <div className="space-y-4 pt-2">
-                    <ToggleSwitch labelLeft="Best Sellers" label={form.is_best_seller ? 'Checked' : 'Unchecked'} checked={form.is_best_seller} onChange={v => setForm({...form, is_best_seller: v})} />
-                    
-                    <div><label className="block text-xs font-semibold text-slate-600 uppercase mb-2">Product Set</label><input type="text" value={form.product_set} onChange={(e) => setForm({...form, product_set: e.target.value})} placeholder="Enter set number (e.g., 1, 2, 3...)" className="w-full border border-slate-300 rounded p-3 text-sm outline-none focus:border-slate-500" /></div>
-
-                    <ToggleSwitch labelLeft="Show in Searching" label={form.show_in_search ? 'Show' : 'Hide'} checked={form.show_in_search} onChange={v => setForm({...form, show_in_search: v})} />
-                    <ToggleSwitch labelLeft="Promotion" label={form.is_promotion ? 'Checked' : 'Unchecked'} checked={form.is_promotion} onChange={v => setForm({...form, is_promotion: v})} />
-                    <ToggleSwitch labelLeft="Featured (Community Favourites)" label={form.featured ? 'Checked' : 'Unchecked'} checked={form.featured} onChange={v => setForm({...form, featured: v})} />
-                    <ToggleSwitch labelLeft="Status" label={form.status ? 'Active' : 'Inactive'} checked={form.status} onChange={v => setForm({...form, status: v})} />
-                    
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-600 uppercase mb-2">Release Date/Time</label>
-                      <input type="datetime-local" value={form.release_date} onChange={(e) => setForm({...form, release_date: e.target.value})} className="w-full border border-slate-300 rounded p-3 text-sm bg-white outline-none focus:border-slate-500" />
-                      <p className="text-xs text-slate-400 mt-2">Set a future date/time to schedule product release. Leave empty for immediate availability.</p>
+                  {form.images.length > 0 && (
+                    <div className="grid grid-cols-4 gap-3 mt-4">
+                      {form.images.map((imgUrl, idx) => (
+                        <div key={idx} className="relative aspect-[3/4] rounded overflow-hidden border border-slate-200 bg-slate-50 group">
+                          <img src={imgUrl} alt={`Preview ${idx}`} className="w-full h-full object-cover" />
+                          <button onClick={() => removeImage(idx)} className="absolute top-1 right-1 bg-white/80 hover:bg-white text-rose-500 rounded p-1 opacity-0 group-hover:opacity-100 transition-opacity"><X size={14} /></button>
+                        </div>
+                      ))}
                     </div>
-
-                    <div><label className="block text-xs font-semibold text-slate-600 uppercase mb-2">Ordering</label><input type="number" value={form.ordering} onChange={(e) => setForm({...form, ordering: parseInt(e.target.value) || 0})} className="w-full border border-slate-300 rounded p-3 text-sm outline-none focus:border-slate-500" /></div>
-                  </div>
-
+                  )}
                 </div>
               </div>
-            )}
 
-            {/* PLACEHOLDER TABS */}
-            {activeTopTab !== 'General Info' && (
-               <div className="p-16 text-center border-2 border-dashed border-slate-200 rounded-xl bg-slate-50 max-w-2xl mx-auto mt-10">
-                 <p className="text-slate-500 font-medium text-lg">The {activeTopTab} module is under development.</p>
-                 <p className="text-sm text-slate-400 mt-2">Check back soon.</p>
-               </div>
-            )}
+              {/* RIGHT COLUMN: Settings & Categories */}
+              <div className="w-full md:w-1/2 p-6 md:p-8 space-y-6">
+                <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-4 border-b border-slate-100 pb-2">Organization & Settings</h3>
+                
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 uppercase mb-3">Categories</label>
+                  <div className="grid grid-cols-2 gap-3 bg-slate-50 p-4 rounded border border-slate-200 h-[140px] overflow-y-auto">
+                    {dbCategories.map((/** @type {any} */ cat) => (
+                      <label key={cat.title || cat.name} className="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" className="rounded border-slate-300 text-slate-900 focus:ring-slate-900"
+                          checked={form.category_list.includes(cat.title || cat.name)}
+                          onChange={(e) => {
+                            const val = cat.title || cat.name;
+                            if (e.target.checked) setForm({...form, category_list: [...form.category_list, val]});
+                            else setForm({...form, category_list: form.category_list.filter(c => c !== val)});
+                          }}
+                        />
+                        <span className="text-sm text-slate-700 truncate">{cat.title || cat.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div><label className="block text-xs font-semibold text-slate-600 uppercase mb-2">Search Tags</label><input type="text" value={form.tags} onChange={(e) => setForm({...form, tags: e.target.value})} placeholder="tag-1, tag-2..." className="w-full border border-slate-300 rounded p-3 text-sm outline-none focus:border-slate-500" /></div>
+
+                <div className="space-y-4 pt-2">
+                  <ToggleSwitch labelLeft="Active Status" label={form.status ? 'Published' : 'Hidden'} checked={form.status} onChange={v => setForm({...form, status: v})} />
+                  <ToggleSwitch labelLeft="Best Seller Badge" label={form.is_best_seller ? 'Yes' : 'No'} checked={form.is_best_seller} onChange={v => setForm({...form, is_best_seller: v})} />
+                  <ToggleSwitch labelLeft="Featured Item" label={form.featured ? 'Yes' : 'No'} checked={form.featured} onChange={v => setForm({...form, featured: v})} />
+                </div>
+              </div>
+            </div>
+
+            {/* --- STRICT REPORT VARIANT SECTION --- */}
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="p-6 bg-slate-900 text-white flex items-center justify-between">
+                <div>
+                  <h3 className="text-base font-bold uppercase tracking-wider">Product Variants (SKUs)</h3>
+                  <p className="text-xs text-slate-300 mt-1 font-mono flex items-center gap-1.5"><Info size={12}/> Inventory quantities are managed securely via the Warehouse Ledger.</p>
+                </div>
+                <button type="button" onClick={addVariant} className="flex items-center gap-2 px-4 py-2 bg-white text-slate-900 rounded text-sm font-bold hover:bg-slate-100 transition-colors">
+                  <Plus size={16} /> Add Variant
+                </button>
+              </div>
+              
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-slate-50 border-b border-slate-200">
+                    <tr>
+                      <th className="px-4 py-3 font-semibold text-slate-600 uppercase text-xs w-[180px]">SKU / Barcode</th>
+                      <th className="px-4 py-3 font-semibold text-slate-600 uppercase text-xs">Size / Volume</th>
+                      <th className="px-4 py-3 font-semibold text-slate-600 uppercase text-xs">Scent</th>
+                      <th className="px-4 py-3 font-semibold text-slate-600 uppercase text-xs w-[120px]">Price ($)</th>
+                      <th className="px-4 py-3 font-semibold text-slate-600 uppercase text-xs w-[120px]">Cost ($)</th>
+                      <th className="px-4 py-3 font-semibold text-slate-600 uppercase text-xs text-center w-[80px]">Active</th>
+                      <th className="px-4 py-3 font-semibold text-slate-600 uppercase text-xs text-right w-[60px]">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {form.variants.map((variant, index) => (
+                      <tr key={index} className="hover:bg-slate-50/50">
+                        <td className="px-4 py-3">
+                          <input type="text" value={variant.sku} onChange={(e) => updateVariant(index, 'sku', e.target.value)} placeholder="SKU Code" className="w-full border border-slate-300 rounded px-2 py-1.5 text-xs font-mono outline-none focus:border-slate-500 mb-1" />
+                        </td>
+                        <td className="px-4 py-3">
+                          <input type="text" value={variant.size} onChange={(e) => updateVariant(index, 'size', e.target.value)} placeholder="e.g. 500ml" className="w-full border border-slate-300 rounded px-2 py-1.5 text-xs outline-none focus:border-slate-500" />
+                        </td>
+                        <td className="px-4 py-3">
+                          <input type="text" value={variant.scent} onChange={(e) => updateVariant(index, 'scent', e.target.value)} placeholder="e.g. Lavender" className="w-full border border-slate-300 rounded px-2 py-1.5 text-xs outline-none focus:border-slate-500" />
+                        </td>
+                        <td className="px-4 py-3">
+                          <input type="number" step="0.01" value={variant.price} onChange={(e) => updateVariant(index, 'price', e.target.value)} placeholder="0.00" className="w-full border border-slate-300 rounded px-2 py-1.5 text-xs font-mono outline-none focus:border-slate-500" required />
+                        </td>
+                        <td className="px-4 py-3">
+                          <input type="number" step="0.01" value={variant.cost} onChange={(e) => updateVariant(index, 'cost', e.target.value)} placeholder="0.00" className="w-full border border-slate-300 rounded px-2 py-1.5 text-xs font-mono outline-none focus:border-slate-500" />
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <input type="checkbox" checked={variant.is_active} onChange={(e) => updateVariant(index, 'is_active', e.target.checked)} className="rounded border-slate-300 text-slate-900 focus:ring-slate-900 cursor-pointer" />
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <button type="button" onClick={() => removeVariant(index)} className="p-1.5 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors" title="Remove Variant" disabled={form.variants.length === 1}>
+                            <Trash2 size={16} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
           </div>
         </div>
       )}
@@ -564,7 +565,7 @@ export default function Products() {
             <div className="p-8 text-center">
               <div className="w-16 h-16 bg-rose-50 rounded-full flex items-center justify-center mx-auto mb-4"><Trash2 size={28} className="text-rose-500" /></div>
               <h2 className="text-xl font-bold text-slate-900 mb-2">Delete Product?</h2>
-              <p className="text-sm text-slate-500 mb-8">Are you sure you want to delete "<span className="font-semibold text-slate-800">{productToDelete.name}</span>"?</p>
+              <p className="text-sm text-slate-500 mb-8">Are you sure you want to delete "<span className="font-semibold text-slate-800">{productToDelete.name}</span>"? This will also delete all associated variants.</p>
               <div className="flex justify-center gap-3">
                 <button onClick={() => setProductToDelete(null)} disabled={deleteProductMutation.isPending} className="px-5 py-2.5 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors w-full">Cancel</button>
                 <button onClick={confirmDelete} disabled={deleteProductMutation.isPending} className="px-5 py-2.5 text-sm font-medium bg-rose-500 text-white rounded-lg hover:bg-rose-600 transition-colors w-full flex items-center justify-center gap-2">
