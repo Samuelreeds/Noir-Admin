@@ -25,6 +25,7 @@ import AdminCreateRole from '@/pages/admin/CreateRole';
 import AdminPermissions from '@/pages/admin/Permissions';
 import AdminUsers from '@/pages/admin/Users';
 import AdminActivityLogs from '@/pages/admin/ActivityLogs';
+import AdminSecurity from '@/pages/admin/Security';
 
 // Auth Imports
 import Login from '@/pages/Login';
@@ -100,6 +101,7 @@ const AdminApp = () => {
         <Route path="permissions" element={<AdminPermissions />} />
         <Route path="users" element={<AdminUsers />} />
         <Route path="activity-logs" element={<AdminActivityLogs />} />
+        <Route path="security" element={<AdminSecurity />} />
       </Route>
       
       {/* Catch-all to redirect back to dashboard */}

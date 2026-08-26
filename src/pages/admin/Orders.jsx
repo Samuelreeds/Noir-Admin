@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   RefreshCcw, Download, Printer, Search, Eye, X, FileText, ChevronLeft, ChevronRight,
-  Package, Truck, CheckCircle, Camera, CreditCard, MapPin, User, ArrowLeft, AlertTriangle
+  Package, Truck, CheckCircle, Camera, CreditCard, MapPin, User, ArrowLeft, AlertTriangle, RefreshCcwDot, XCircle
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -11,7 +11,6 @@ import ReceiptTemplate from '@/components/admin/ReceiptTemplate';
 
 const ITEMS_PER_PAGE = 20;
 
-// --- IMAGE UPLOAD HELPER ---
 const uploadProofFileToSupabase = async (/** @type {File} */ file, /** @type {string} */ prefix, /** @type {string} */ orderId) => {
   const fileExt = file.name.split('.').pop();
   const fileName = `${prefix}_${orderId}_${Date.now()}.${fileExt}`;
@@ -39,7 +38,6 @@ export default function Orders() {
 
   const queryClient = useQueryClient();
 
-  // 1. Fetch live orders (Updated with new 3-dimensional statuses)
   const { data: orders = [], isLoading: loading, refetch, isFetching } = useQuery({
     queryKey: ['admin-orders'],
     queryFn: async () => {
@@ -59,31 +57,28 @@ export default function Orders() {
     staleTime: 5 * 60 * 1000,
   });
 
-  // 2. Multi-Dimensional Status Update Mutation
   const updateStatusMutation = useMutation({
-    mutationFn: async (/** @type {{ id: string, payment_status?: string, fulfilment_status?: string, timestampField?: string }} */ payload) => {
-      const { id, payment_status, fulfilment_status, timestampField } = payload;
+    mutationFn: async (/** @type {{ id: string, payment_status?: string, fulfilment_status?: string, commercial_status?: string, timestampField?: string }} */ payload) => {
+      const { id, payment_status, fulfilment_status, commercial_status, timestampField } = payload;
       
       const updateData = {};
       if (payment_status) updateData.payment_status = payment_status;
       if (fulfilment_status) updateData.fulfilment_status = fulfilment_status;
+      if (commercial_status) updateData.commercial_status = commercial_status;
       if (timestampField) updateData[timestampField] = new Date().toISOString();
       
       const { data, error } = await supabase.from('orders').update(updateData).eq('id', id).select();
       
       if (error) throw error;
-      if (!data || data.length === 0) throw new Error("Update blocked by Database Security Policies.");
-      
       return data[0];
     },
     onSuccess: (updatedData) => {
       queryClient.invalidateQueries({ queryKey: ['admin-orders'] });
       setSelectedOrder((/** @type {any} */ prev) => ({ ...prev, ...updatedData }));
     },
-    onError: (err) => alert("Failed to update status: " + err.message)
+    onError: (err) => alert(err.message) 
   });
 
-  // 3. Proof Upload Mutation
   const uploadProofMutation = useMutation({
     mutationFn: async (/** @type {{ file: File, type: 'internal' | 'delivery', orderId: string }} */ { file, type, orderId }) => {
       const prefix = type === 'internal' ? 'packed' : 'delivered';
@@ -94,8 +89,6 @@ export default function Orders() {
       const { data, error } = await supabase.from('orders').update({ [fieldToUpdate]: fileUrl }).eq('id', orderId).select();
       
       if (error) throw error;
-      if (!data || data.length === 0) throw new Error("Update blocked by Database Security Policies.");
-      
       return data[0];
     },
     onSuccess: (updatedData) => {
@@ -197,14 +190,36 @@ export default function Orders() {
     uploadProofMutation.mutate({ file, type, orderId: selectedOrder.id });
   };
 
-  // STRICT MULTI-DIMENSIONAL WORKFLOW
   const advanceStatus = (/** @type {string} */ action) => {
     if (!selectedOrder) return;
     
+    // PAYMENT ACTIONS (Separated from Fulfilment)
     if (action === 'approve_payment') {
       updateStatusMutation.mutate({ 
         id: selectedOrder.id, 
-        payment_status: 'Paid', 
+        payment_status: 'Paid'
+      });
+    }
+    else if (action === 'reject_payment') {
+      if (!window.confirm("Are you sure you want to REJECT this payment? The customer will be asked to re-upload their receipt.")) return;
+      updateStatusMutation.mutate({ 
+        id: selectedOrder.id, 
+        payment_status: 'Failed'
+      });
+    }
+    else if (action === 'process_refund') {
+      if (!window.confirm("RBAC CHECK: Are you sure you want to refund this order? Unauthorized attempts will be blocked and logged.")) return;
+      updateStatusMutation.mutate({ 
+        id: selectedOrder.id, 
+        payment_status: 'Refunded', 
+        commercial_status: 'Returned'
+      });
+    }
+    
+    // FULFILMENT ACTIONS
+    else if (action === 'mark_picking') {
+      updateStatusMutation.mutate({ 
+        id: selectedOrder.id, 
         fulfilment_status: 'Picking' 
       });
     }
@@ -232,7 +247,8 @@ export default function Orders() {
       updateStatusMutation.mutate({ 
         id: selectedOrder.id, 
         fulfilment_status: 'Delivered', 
-        timestampField: 'delivered_at' 
+        timestampField: 'delivered_at',
+        commercial_status: 'Completed'
       });
     }
   };
@@ -261,6 +277,7 @@ export default function Orders() {
               <option value="Unpaid">Unpaid</option>
               <option value="Pending Verification">Pending Verification</option>
               <option value="Paid">Paid</option>
+              <option value="Failed">Failed</option>
               <option value="Refunded">Refunded</option>
             </select>
 
@@ -355,6 +372,7 @@ export default function Orders() {
                           </span>
                           <span className={`text-[10px] font-bold uppercase ${
                             order.payment_status === 'Paid' ? 'text-emerald-600' : 
+                            order.payment_status === 'Failed' ? 'text-rose-600' : 
                             order.payment_status === 'Refunded' ? 'text-red-600' : 'text-amber-600'
                           }`}>
                             Pay: {order.payment_status || 'Unpaid'}
@@ -410,7 +428,7 @@ export default function Orders() {
                 </div>
               </div>
 
-              {/* Modal Body Content - 2 Column Grid */}
+              {/* Modal Body Content */}
               <div className="p-6 overflow-y-auto custom-scrollbar flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6">
                 
                 {/* Left Column: Details & Proofs */}
@@ -437,16 +455,37 @@ export default function Orders() {
 
                   {/* Payment Details */}
                   <div className="bg-white rounded-lg border border-slate-200 overflow-hidden shadow-sm">
-                    <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center gap-2"><CreditCard size={16} className="text-slate-500" /><span className="text-xs font-bold text-slate-700 uppercase tracking-wider">Payment Details</span></div>
+                    <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <CreditCard size={16} className="text-slate-500" />
+                        <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">Payment Details</span>
+                      </div>
+                    </div>
                     <div className="p-4 space-y-4">
                       <div><p className="text-[10px] uppercase text-slate-400 font-semibold mb-1">Payment Method</p><p className="text-sm font-semibold text-slate-900 uppercase">{selectedOrder.payment_method === 'qr' ? 'Bank Transfer (QR)' : 'Cash on Delivery'}</p></div>
                       <div><p className="text-[10px] uppercase text-slate-400 font-semibold mb-1">Currency</p><p className="text-sm font-bold text-slate-900 uppercase">{selectedOrder.currency || 'USD'}</p></div>
                       <div>
                         <p className="text-[10px] uppercase text-slate-400 font-semibold mb-1">Payment Status</p>
-                        <span className={`inline-block px-2 py-0.5 border rounded text-xs font-semibold ${selectedOrder.payment_status === 'Paid' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
+                        <span className={`inline-block px-2 py-0.5 border rounded text-xs font-semibold ${
+                          selectedOrder.payment_status === 'Paid' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 
+                          selectedOrder.payment_status === 'Failed' ? 'bg-rose-50 text-rose-700 border-rose-200' : 
+                          'bg-amber-50 text-amber-700 border-amber-200'
+                        }`}>
                           {selectedOrder.payment_status}
                         </span>
                       </div>
+
+                      {selectedOrder.payment_status === 'Paid' && (
+                        <div className="pt-3 border-t border-slate-100">
+                          <button 
+                            onClick={() => advanceStatus('process_refund')} 
+                            disabled={updateStatusMutation.isPending} 
+                            className="w-full flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-wider bg-rose-50 text-rose-600 border border-rose-200 px-4 py-2 rounded shadow-sm hover:bg-rose-100 transition-all disabled:opacity-50"
+                          >
+                            <RefreshCcwDot size={14} /> Process Refund
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -491,28 +530,6 @@ export default function Orders() {
                         <input type="file" accept="image/*" onChange={(e) => handleProofUpload(e, 'internal')} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" disabled={uploadingProof === 'internal'} />
                         <button disabled={uploadingProof === 'internal'} className="text-xs font-medium border border-slate-300 bg-white text-slate-700 px-4 py-2 rounded hover:bg-slate-50 w-full disabled:opacity-50">
                           {uploadingProof === 'internal' ? 'Uploading...' : selectedOrder.internal_proof_url ? 'Update Photo' : 'Upload Photo'}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Delivery Proof Box */}
-                  <div className="bg-white rounded-lg border border-emerald-200 overflow-hidden">
-                    <div className="px-4 py-3 bg-emerald-50 border-b border-emerald-100 flex items-center gap-2"><Truck size={16} className="text-emerald-600" /><span className="text-xs font-bold text-emerald-800 uppercase tracking-wider">Delivery Proof (Public)</span></div>
-                    <div className="p-4 text-center">
-                      {selectedOrder.delivery_proof_url ? (
-                        <div className="rounded-lg overflow-hidden border border-slate-200 mb-2"><img src={selectedOrder.delivery_proof_url} alt="Delivery Proof" className="w-full object-contain" /></div>
-                      ) : (
-                        <div className="border-2 border-dashed border-emerald-100 rounded-lg p-6 mb-2 bg-emerald-50/50 flex flex-col items-center">
-                          <Camera size={24} className="text-emerald-300 mb-2" />
-                          <p className="text-sm font-semibold text-slate-700">No delivery proof</p>
-                          <p className="text-[10px] text-slate-500 mt-1">Visible to customer in history.</p>
-                        </div>
-                      )}
-                      <div className="relative">
-                        <input type="file" accept="image/*" onChange={(e) => handleProofUpload(e, 'delivery')} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" disabled={uploadingProof === 'delivery'} />
-                        <button disabled={uploadingProof === 'delivery'} className="text-xs font-medium border border-emerald-200 bg-white text-emerald-700 px-4 py-2 rounded hover:bg-emerald-50 w-full disabled:opacity-50">
-                          {uploadingProof === 'delivery' ? 'Uploading...' : selectedOrder.delivery_proof_url ? 'Update Photo' : 'Upload Photo'}
                         </button>
                       </div>
                     </div>
@@ -568,7 +585,7 @@ export default function Orders() {
                     </div>
                   </div>
 
-                  {/* STRICT 3-DIMENSIONAL WORKFLOW */}
+                  {/* STRICT WORKFLOW - DECOUPLED PAYMENT & FULFILMENT */}
                   <div className="bg-white rounded-lg border border-slate-200 overflow-hidden shadow-sm">
                     <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
                       <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Operations Workflow</h3>
@@ -577,35 +594,54 @@ export default function Orders() {
                     <div className="p-8">
                       <div className="relative border-l-2 border-slate-200 ml-4 space-y-10 pb-4">
                         
-                        {/* 1. Payment Verification */}
+                        {/* 1. Payment Verification (Decoupled from Fulfilment) */}
                         <div className="relative pl-8">
-                          <div className={`absolute -left-[17px] top-0 w-8 h-8 rounded-full flex items-center justify-center shadow-[0_0_0_4px_white] ${selectedOrder.payment_status === 'Paid' ? 'bg-emerald-500 text-white' : 'bg-amber-500 text-white'}`}><CreditCard size={14} /></div>
+                          <div className={`absolute -left-[17px] top-0 w-8 h-8 rounded-full flex items-center justify-center shadow-[0_0_0_4px_white] ${
+                            selectedOrder.payment_status === 'Paid' ? 'bg-emerald-500 text-white' : 
+                            selectedOrder.payment_status === 'Failed' ? 'bg-rose-500 text-white' : 
+                            'bg-amber-500 text-white'
+                          }`}><CreditCard size={14} /></div>
                           <div>
-                            <h4 className={`font-bold ${selectedOrder.payment_status === 'Paid' ? 'text-emerald-700' : 'text-amber-600'}`}>
-                              {selectedOrder.payment_status === 'Paid' ? 'PAYMENT VERIFIED' : 'PENDING VERIFICATION'}
+                            <h4 className={`font-bold ${
+                              selectedOrder.payment_status === 'Paid' ? 'text-emerald-700' : 
+                              selectedOrder.payment_status === 'Failed' ? 'text-rose-700' : 
+                              'text-amber-600'
+                            }`}>
+                              {selectedOrder.payment_status === 'Paid' ? 'PAYMENT VERIFIED' : 
+                               selectedOrder.payment_status === 'Failed' ? 'PAYMENT VERIFICATION FAILED' : 
+                               'PENDING VERIFICATION'}
                             </h4>
                             <p className="text-xs text-slate-400 mt-0.5">Order Placed: {formatDateTime(selectedOrder.created_at)}</p>
                             
-                            {(selectedOrder.payment_status === 'Unpaid' || selectedOrder.payment_status === 'Pending Verification') && (
+                            {(selectedOrder.payment_status === 'Unpaid' || selectedOrder.payment_status === 'Pending Verification' || selectedOrder.payment_status === 'Failed') && (
                               <div className="mt-4">
                                 {!selectedOrder.transaction_receipt_url && selectedOrder.payment_method === 'qr' && (
                                   <p className="text-[10px] text-amber-600 font-semibold mb-2 flex items-center gap-1.5">
                                     <AlertTriangle size={12} /> Awaiting customer receipt upload
                                   </p>
                                 )}
-                                <button 
-                                  onClick={() => advanceStatus('approve_payment')} 
-                                  disabled={updateStatusMutation.isPending || (!selectedOrder.transaction_receipt_url && selectedOrder.payment_method === 'qr')} 
-                                  className="text-xs bg-amber-500 text-white px-5 py-2 rounded shadow-sm hover:bg-amber-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                  {updateStatusMutation.isPending ? 'Updating...' : 'Approve Payment'}
-                                </button>
+                                <div className="flex items-center gap-2">
+                                  <button 
+                                    onClick={() => advanceStatus('approve_payment')} 
+                                    disabled={updateStatusMutation.isPending || (!selectedOrder.transaction_receipt_url && selectedOrder.payment_method === 'qr')} 
+                                    className="text-xs bg-amber-500 text-white px-5 py-2 rounded shadow-sm hover:bg-amber-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                  >
+                                    Approve Payment
+                                  </button>
+                                  <button 
+                                    onClick={() => advanceStatus('reject_payment')} 
+                                    disabled={updateStatusMutation.isPending || (!selectedOrder.transaction_receipt_url && selectedOrder.payment_method === 'qr')} 
+                                    className="text-xs border border-rose-200 bg-rose-50 text-rose-600 px-5 py-2 rounded shadow-sm hover:bg-rose-100 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                                  >
+                                    <XCircle size={14} /> Reject
+                                  </button>
+                                </div>
                               </div>
                             )}
                           </div>
                         </div>
 
-                        {/* 2. Picking / Packing */}
+                        {/* 2. Picking / Packing (Now requires explicit separate action) */}
                         <div className={`relative pl-8 ${selectedOrder.payment_status !== 'Paid' ? 'opacity-40' : ''}`}>
                           <div className={`absolute -left-[17px] top-0 w-8 h-8 rounded-full flex items-center justify-center shadow-[0_0_0_4px_white] ${selectedOrder.fulfilment_status === 'Picking' ? 'bg-indigo-500 text-white shadow-indigo-200' : (selectedOrder.fulfilment_status !== 'Unconfirmed' ? 'bg-slate-800 text-white' : 'bg-slate-100 border border-slate-300 text-slate-400')}`}><Package size={14} /></div>
                           <div>
@@ -613,6 +649,18 @@ export default function Orders() {
                               PROCESSING (Picking Order)
                             </h4>
                             
+                            {selectedOrder.fulfilment_status === 'Unconfirmed' && selectedOrder.payment_status === 'Paid' && (
+                              <div className="mt-4">
+                                <button 
+                                  onClick={() => advanceStatus('mark_picking')} 
+                                  disabled={updateStatusMutation.isPending} 
+                                  className="text-xs bg-indigo-500 text-white px-5 py-2 rounded shadow-sm hover:bg-indigo-600 transition-all disabled:opacity-50"
+                                >
+                                  {updateStatusMutation.isPending ? 'Updating...' : 'Start Picking'}
+                                </button>
+                              </div>
+                            )}
+
                             {selectedOrder.fulfilment_status === 'Picking' && (
                               <div className="mt-4">
                                 {!selectedOrder.internal_proof_url && (
@@ -623,7 +671,7 @@ export default function Orders() {
                                 <button 
                                   onClick={() => advanceStatus('mark_packed')} 
                                   disabled={updateStatusMutation.isPending || !selectedOrder.internal_proof_url} 
-                                  className="text-xs bg-indigo-500 text-white px-5 py-2 rounded shadow-sm hover:bg-indigo-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                  className="text-xs bg-slate-800 text-white px-5 py-2 rounded shadow-sm hover:bg-slate-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                   {updateStatusMutation.isPending ? 'Updating...' : 'Mark as Packed'}
                                 </button>

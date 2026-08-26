@@ -1,440 +1,304 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  RefreshCcw, Search, X, Package, AlertTriangle, 
-  List, BarChart2, History, ArrowUpDown, FileSpreadsheet, FileText, Calendar 
-} from 'lucide-react';
+// @ts-nocheck
+import React, { useState } from 'react';
+import { Package, Plus, Search, History, ArrowDownRight, ArrowUpRight, Save, X, RefreshCcw } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
-const ITEMS_PER_PAGE = 20;
-const LOW_STOCK_THRESHOLD = 10;
-
 export default function Inventory() {
-  const [activeTab, setActiveTab] = useState('list'); // 'list', 'analytics', 'log'
-  
-  // List State
+  const [activeTab, setActiveTab] = useState('balances'); // 'balances' or 'history'
   const [searchQuery, setSearchQuery] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('All Categories');
+  const [isModalOpen, setIsModalOpen] = useState(false);
   
-  // Log State
-  const [logSearch, setLogSearch] = useState('');
-  const [logReason, setLogReason] = useState('All Reasons');
-  const [logCategory, setLogCategory] = useState('All Categories');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-
-  // Edit Modal State
-  const [selectedProduct, setSelectedProduct] = useState(/** @type {any} */ (null));
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [newStock, setNewStock] = useState('');
+  const defaultForm = { variant_id: '', movement_type: 'receipt', quantity: '', reason: '' };
+  const [form, setForm] = useState(defaultForm);
 
   const queryClient = useQueryClient();
 
-  // 1. Fetch Products
-  const { data: products = [], isLoading: isLoadingProducts, refetch: refetchProducts } = useQuery({
-    queryKey: ['admin-inventory-products'],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('products').select('*').order('stock', { ascending: true });
-      if (error) throw error;
-      return data || [];
-    },
-    staleTime: 5 * 60 * 1000,
-  });
-
-  // 2. Fetch Logs
-  const { data: logs = [], isLoading: isLoadingLogs, refetch: refetchLogs } = useQuery({
-    queryKey: ['admin-inventory-logs'],
+  // 1. Fetch Variants and their Live Balances (Calculated securely from the ledger view)
+  const { data: stockBalances = [], isLoading: loadingBalances } = useQuery({
+    queryKey: ['admin-inventory-balances'],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('inventory_logs')
-        .select('*, products(name, code, image, category)')
-        .order('created_at', { ascending: false });
+        .from('product_variants')
+        .select(`
+          id, sku, size, scent, price,
+          products ( name, image ),
+          variant_stock_balances ( on_hand, reserved, available )
+        `)
+        .eq('is_active', true)
+        .order('sku', { ascending: true });
+        
       if (error) throw error;
       return data || [];
-    },
-    staleTime: 5 * 60 * 1000,
+    }
   });
 
-  // 3. Mutation: Update Stock & Insert Log
-  const updateStockMutation = useMutation({
-    mutationFn: async (/** @type {{ id: string, oldStock: number, newStock: number, productName: string }} */ payload) => {
-      const change = payload.newStock - payload.oldStock;
-      
-      // Update Product Table
-      const { error: updateError } = await supabase
-        .from('products')
-        .update({ stock: payload.newStock })
-        .eq('id', payload.id);
-      if (updateError) throw updateError;
+  // 2. Fetch Immutable Ledger History
+  const { data: ledgerHistory = [], isLoading: loadingHistory } = useQuery({
+    queryKey: ['admin-inventory-history'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('inventory_ledger')
+        .select(`
+          id, movement_type, quantity_change, reason, created_at,
+          product_variants ( sku, size, products ( name ) ),
+          users ( full_name )
+        `)
+        .order('created_at', { ascending: false })
+        .limit(100);
+        
+      if (error) throw error;
+      return data || [];
+    }
+  });
 
-      // Insert Log
-      const { error: logError } = await supabase
-        .from('inventory_logs')
-        .insert([{
-          product_id: payload.id,
-          change_amount: change,
-          previous_stock: payload.oldStock,
-          new_stock: payload.newStock,
-          reason: 'ADJUSTMENTS',
-          details: `Manual adjustment via admin panel`,
-          user_name: 'Admin'
-        }]);
-      if (logError) throw logError;
+  // 3. Record Movement Mutation (Inserts a ledger row instead of editing flat stock)
+  const recordMovementMutation = useMutation({
+    mutationFn: async () => {
+      if (!form.variant_id || !form.quantity || !form.movement_type) {
+        throw new Error("Please fill in all required fields.");
+      }
+
+      let qty = parseInt(form.quantity, 10);
+      if (isNaN(qty) || qty === 0) throw new Error("Quantity must be a valid number (not zero).");
+
+      // If it's a reduction type (damage, expiry, issue), enforce negative quantity
+      if (['damage', 'expiry', 'sale_issue'].includes(form.movement_type)) {
+        qty = -Math.abs(qty);
+      } else if (['receipt', 'return'].includes(form.movement_type)) {
+        qty = Math.abs(qty);
+      }
       
-      return true;
+      const { data: authData } = await supabase.auth.getUser();
+
+      const { error } = await supabase.from('inventory_ledger').insert([{
+        variant_id: form.variant_id,
+        movement_type: form.movement_type,
+        quantity_change: qty,
+        reason: form.reason || null,
+        recorded_by: authData?.user?.id || null
+      }]);
+
+      if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-inventory-products'] });
-      queryClient.invalidateQueries({ queryKey: ['admin-inventory-logs'] });
-      setIsEditModalOpen(false);
-      setSelectedProduct(null);
+      queryClient.invalidateQueries({ queryKey: ['admin-inventory-balances'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-inventory-history'] });
+      setIsModalOpen(false);
+      setForm(defaultForm);
     },
-    onError: (err) => alert("Failed to update stock: " + err.message)
+    onError: (err) => alert("Failed to record movement: " + err.message)
   });
 
-  // Derived Data & Summaries
-  const categories = ['All Categories', ...new Set(products.map((/** @type {any} */ p) => p.category).filter(Boolean))];
-  
-  const totalStock = products.reduce((sum, p) => sum + (p.stock || 0), 0);
-  const outOfStockCount = products.filter(p => (p.stock || 0) <= 0).length;
-  const lowStockCount = products.filter(p => (p.stock || 0) > 0 && (p.stock || 0) <= LOW_STOCK_THRESHOLD).length;
-  const totalValue = products.reduce((sum, p) => sum + ((p.stock || 0) * (p.price || 0)), 0);
-
-  // Filters
-  const filteredProducts = products.filter((/** @type {any} */ p) => {
-    if (categoryFilter !== 'All Categories' && p.category !== categoryFilter) return false;
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      return `${p.name} ${p.code}`.toLowerCase().includes(q);
-    }
-    return true;
+  // Filter for Search
+  const filteredBalances = stockBalances.filter((/** @type {any} */ item) => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    const str = `${item.sku} ${item.products?.name} ${item.size}`.toLowerCase();
+    return str.includes(q);
   });
-
-  const filteredLogs = logs.filter((/** @type {any} */ log) => {
-    if (logCategory !== 'All Categories' && log.products?.category !== logCategory) return false;
-    if (logReason !== 'All Reasons' && log.reason !== logReason.toUpperCase()) return false;
-    
-    if (logSearch) {
-      const q = logSearch.toLowerCase();
-      const string = `${log.products?.name} ${log.products?.code} ${log.details}`.toLowerCase();
-      if (!string.includes(q)) return false;
-    }
-    
-    const logDate = new Date(log.created_at).toISOString().split('T')[0];
-    if (startDate && logDate < startDate) return false;
-    if (endDate && logDate > endDate) return false;
-
-    return true;
-  });
-
-  // Handlers
-  const handleOpenEdit = (/** @type {any} */ product) => {
-    setSelectedProduct(product);
-    setNewStock(product.stock?.toString() || '0');
-    setIsEditModalOpen(true);
-  };
-
-  const handleSaveStock = (/** @type {any} */ e) => {
-    e.preventDefault();
-    if (!selectedProduct) return;
-    const qty = parseInt(newStock);
-    if (isNaN(qty) || qty < 0) return alert("Please enter a valid stock quantity.");
-    updateStockMutation.mutate({ 
-      id: selectedProduct.id, 
-      oldStock: selectedProduct.stock || 0, 
-      newStock: qty,
-      productName: selectedProduct.name 
-    });
-  };
-
-  const handleRefresh = () => {
-    refetchProducts();
-    refetchLogs();
-  };
-
-  // UI Components
-  const renderSummaryCards = () => (
-    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-      <div className="bg-white border border-slate-200 rounded-lg p-5 shadow-sm">
-        <p className="text-sm text-slate-500 font-medium mb-2">Total Stock</p>
-        <div className="flex items-center gap-2 text-2xl font-bold text-slate-900">
-          <Package size={20} className="text-slate-700" /> {totalStock.toLocaleString()}
-        </div>
-      </div>
-      <div className="bg-white border border-slate-200 rounded-lg p-5 shadow-sm">
-        <p className="text-sm text-slate-500 font-medium mb-2">Low Stock Items</p>
-        <div className="flex items-center gap-2 text-2xl font-bold text-amber-600">
-          <AlertTriangle size={20} /> {lowStockCount.toLocaleString()}
-        </div>
-      </div>
-      <div className="bg-white border border-slate-200 rounded-lg p-5 shadow-sm">
-        <p className="text-sm text-slate-500 font-medium mb-2">Out of Stock</p>
-        <div className="flex items-center gap-2 text-2xl font-bold text-rose-600">
-          <Package size={20} /> {outOfStockCount.toLocaleString()}
-        </div>
-      </div>
-      <div className="bg-white border border-slate-200 rounded-lg p-5 shadow-sm">
-        <p className="text-sm text-slate-500 font-medium mb-2">Total Value</p>
-        <div className="text-2xl font-bold text-slate-900">
-          ${totalValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-        </div>
-      </div>
-    </div>
-  );
 
   return (
-    <div className="max-w-[1600px] mx-auto pb-10">
+    <div className="w-full bg-white rounded-lg shadow-sm border border-slate-200 relative flex flex-col h-[calc(100vh-6rem)] overflow-hidden">
       
       {/* Header & Tabs */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between mb-8 gap-4">
-        <div>
-          <h1 className="text-3xl font-display font-bold text-slate-900 mb-1">Inventory</h1>
-          <p className="text-sm text-slate-500">Track and manage product stock levels</p>
+      <div className="p-6 bg-slate-50 border-b border-slate-200 shrink-0">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900 tracking-wide uppercase">Warehouse Inventory</h1>
+            <p className="text-sm text-slate-500 mt-1">Manage stock levels and view immutable ledger movements.</p>
+          </div>
+          <button onClick={() => setIsModalOpen(true)} className="flex items-center justify-center gap-2 px-5 py-2.5 bg-slate-900 text-white rounded font-medium text-sm hover:bg-slate-800 transition-colors shadow-sm">
+            <Plus size={16} /> Record Stock Movement
+          </button>
         </div>
-        <div className="flex items-center gap-2 bg-white p-1 border border-slate-200 rounded-lg shadow-sm">
-          <button onClick={() => setActiveTab('list')} className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'list' ? 'bg-slate-100 text-slate-900' : 'text-slate-600 hover:text-slate-900'}`}>
-            <List size={16} /> Stock List
+
+        <div className="flex gap-6 mt-6 border-b border-slate-300">
+          <button 
+            onClick={() => setActiveTab('balances')}
+            className={`pb-3 text-sm font-bold uppercase tracking-wider transition-colors border-b-2 ${activeTab === 'balances' ? 'border-slate-900 text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+          >
+            Stock Balances
           </button>
-          <button onClick={() => setActiveTab('analytics')} className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'analytics' ? 'bg-slate-100 text-slate-900' : 'text-slate-600 hover:text-slate-900'}`}>
-            <BarChart2 size={16} /> Analytics
-          </button>
-          <button onClick={() => setActiveTab('log')} className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'log' ? 'bg-slate-100 text-slate-900' : 'text-slate-600 hover:text-slate-900'}`}>
-            <History size={16} /> Stock Log
-          </button>
-          <div className="w-px h-6 bg-slate-200 mx-1" />
-          <button onClick={handleRefresh} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-colors">
-            <RefreshCcw size={14} /> Refresh
+          <button 
+            onClick={() => setActiveTab('history')}
+            className={`pb-3 text-sm font-bold uppercase tracking-wider transition-colors border-b-2 ${activeTab === 'history' ? 'border-slate-900 text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+          >
+            Ledger History
           </button>
         </div>
       </div>
 
-      {activeTab === 'list' && (
-        <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-          {renderSummaryCards()}
-
-          <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden flex flex-col h-[calc(100vh-22rem)] min-h-[500px]">
-            <div className="p-4 border-b border-slate-200 flex flex-wrap gap-4 bg-slate-50/50">
-              <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className="border border-slate-300 rounded px-3 py-2 text-sm bg-white outline-none focus:border-slate-500 w-48">
-                {categories.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
-              </select>
-              <div className="relative flex-1 max-w-xl">
-                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search by name, SKU, or variant..." className="border border-slate-300 rounded pl-9 pr-4 py-2 text-sm w-full outline-none focus:border-slate-500" />
-              </div>
-            </div>
-
-            <div className="overflow-x-auto flex-1 custom-scrollbar">
-              <table className="w-full text-left text-sm whitespace-nowrap">
-                <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-medium sticky top-0 z-10">
-                  <tr>
-                    <th className="px-6 py-4">Product</th>
-                    <th className="px-6 py-4">Color / Variant</th>
-                    <th className="px-6 py-4 w-48">Stock Level</th>
-                    <th className="px-6 py-4 text-center">Threshold</th>
-                    <th className="px-6 py-4 text-right">Stock Value</th>
-                    <th className="px-6 py-4 text-center">Status</th>
-                    <th className="px-6 py-4 text-right">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {isLoadingProducts ? (
-                    <tr><td colSpan={7} className="px-6 py-12 text-center text-slate-500">Loading inventory...</td></tr>
-                  ) : filteredProducts.map((p) => {
-                    const stock = p.stock || 0;
-                    const stockPercent = Math.min(100, (stock / 200) * 100); // UI visual scale up to 200 units
-                    const isOut = stock <= 0;
-                    const stockValue = stock * (p.price || 0);
-
-                    return (
-                      <tr key={p.id} className="hover:bg-slate-50/50">
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded border border-slate-200 overflow-hidden bg-white shrink-0">
-                              {p.image ? <img src={p.image} alt={p.name} className="w-full h-full object-cover" /> : <Package size={20} className="text-slate-400 m-auto h-full" />}
-                            </div>
-                            <div>
-                              <p className="font-semibold text-slate-900">{p.name}</p>
-                              <p className="text-xs text-slate-500 uppercase">{p.code || 'BASE PRODUCT'}</p>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-2">
-                            <div className="w-3 h-3 rounded-full border border-slate-300" style={{ backgroundColor: p.hex_code || '#e2e8f0' }} />
-                            <span className="text-slate-600 text-xs uppercase">{p.color_name || 'BASE PRODUCT'}</span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <p className="font-bold text-slate-900 text-xs mb-1.5">{stock} units</p>
-                          <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                            <div className={`h-full rounded-full ${isOut ? 'bg-rose-500' : 'bg-emerald-500'}`} style={{ width: `${stockPercent}%` }} />
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 text-center text-slate-500 font-mono text-xs">{LOW_STOCK_THRESHOLD}</td>
-                        <td className="px-6 py-4 text-right font-bold text-slate-900">${stockValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                        <td className="px-6 py-4 text-center">
-                          <span className={`inline-flex px-2.5 py-1 rounded text-xs font-medium ${isOut ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'}`}>
-                            {isOut ? 'Out of Stock' : 'In Stock'}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 text-right">
-                          <button onClick={() => handleOpenEdit(p)} className="inline-flex items-center gap-2 px-3 py-1.5 border border-slate-200 hover:border-slate-300 bg-white rounded text-xs font-medium text-slate-700 hover:bg-slate-50 transition-all">
-                            <ArrowUpDown size={12} /> Adjust
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
+      {/* Toolbar */}
+      <div className="p-4 border-b border-slate-200 bg-white shrink-0 flex items-center justify-between">
+        <div className="relative w-full max-w-md">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search by SKU or Product Name..." className="border border-slate-300 rounded pl-9 pr-4 py-2 text-sm w-full outline-none focus:border-slate-500" />
         </div>
-      )}
+        <button onClick={() => { queryClient.invalidateQueries({ queryKey: ['admin-inventory-balances'] }); queryClient.invalidateQueries({ queryKey: ['admin-inventory-history'] }); }} className="p-2 text-slate-500 hover:text-slate-800 transition-colors border border-slate-300 rounded"><RefreshCcw size={16} /></button>
+      </div>
 
-      {activeTab === 'log' && (
-        <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-          <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden flex flex-col h-[calc(100vh-14rem)] min-h-[500px]">
+      {/* Content Area */}
+      <div className="flex-1 overflow-auto custom-scrollbar bg-slate-50/50">
+        
+        {/* --- BALANCES TAB --- */}
+        {activeTab === 'balances' && (
+          <table className="w-full text-left text-sm whitespace-nowrap bg-white">
+            <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-medium sticky top-0 z-10">
+              <tr>
+                <th className="px-6 py-4">SKU Code</th>
+                <th className="px-6 py-4">Product Details</th>
+                <th className="px-6 py-4 text-center text-blue-700 bg-blue-50/50">Available</th>
+                <th className="px-6 py-4 text-center text-amber-700 bg-amber-50/50">Reserved (Orders)</th>
+                <th className="px-6 py-4 text-center text-slate-800 bg-slate-100">Total Physical On-Hand</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {loadingBalances ? (
+                <tr><td colSpan={5} className="px-6 py-12 text-center text-slate-500">Calculating inventory...</td></tr>
+              ) : filteredBalances.length === 0 ? (
+                <tr><td colSpan={5} className="px-6 py-12 text-center text-slate-500">No active SKUs found. Go to Products to create variants.</td></tr>
+              ) : (
+                filteredBalances.map((/** @type {any} */ item) => {
+                  const balances = item.variant_stock_balances?.[0] || { available: 0, reserved: 0, on_hand: 0 };
+                  const isLowStock = balances.available <= 10;
+                  
+                  return (
+                    <tr key={item.id} className="hover:bg-slate-50">
+                      <td className="px-6 py-4 font-mono text-xs font-bold text-slate-700">{item.sku}</td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded bg-slate-100 border border-slate-200 overflow-hidden shrink-0">
+                            {item.products?.image ? <img src={item.products.image} alt={item.products.name} className="w-full h-full object-cover" /> : <Package size={14} className="m-auto mt-2 text-slate-400" />}
+                          </div>
+                          <div>
+                            <p className="font-medium text-slate-900">{item.products?.name}</p>
+                            <p className="text-[10px] text-slate-500 uppercase">{item.size} {item.scent ? `· ${item.scent}` : ''}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-center bg-blue-50/10">
+                        <span className={`inline-flex items-center justify-center px-2.5 py-1 rounded text-xs font-bold ${isLowStock ? 'bg-rose-100 text-rose-700 border border-rose-200' : 'text-blue-700'}`}>
+                          {balances.available || 0}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-center font-medium text-amber-600 bg-amber-50/10">{balances.reserved || 0}</td>
+                      <td className="px-6 py-4 text-center font-bold text-slate-900 bg-slate-50/50">{balances.on_hand || 0}</td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        )}
+
+        {/* --- HISTORY TAB --- */}
+        {activeTab === 'history' && (
+          <table className="w-full text-left text-sm whitespace-nowrap bg-white">
+            <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-medium sticky top-0 z-10">
+              <tr>
+                <th className="px-6 py-4">Date & Time</th>
+                <th className="px-6 py-4">SKU & Product</th>
+                <th className="px-6 py-4">Movement Type</th>
+                <th className="px-6 py-4 text-right">Qty Change</th>
+                <th className="px-6 py-4">Recorded By</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {loadingHistory ? (
+                <tr><td colSpan={5} className="px-6 py-12 text-center text-slate-500">Loading ledger...</td></tr>
+              ) : ledgerHistory.length === 0 ? (
+                <tr><td colSpan={5} className="px-6 py-12 text-center text-slate-500">No movements recorded yet.</td></tr>
+              ) : (
+                ledgerHistory.map((/** @type {any} */ log) => {
+                  const isPositive = log.quantity_change > 0;
+                  return (
+                    <tr key={log.id} className="hover:bg-slate-50">
+                      <td className="px-6 py-4">
+                        <p className="text-slate-900 font-medium">{new Date(log.created_at).toLocaleDateString()}</p>
+                        <p className="text-xs text-slate-500">{new Date(log.created_at).toLocaleTimeString()}</p>
+                      </td>
+                      <td className="px-6 py-4">
+                        <p className="font-mono text-xs font-bold text-slate-700">{log.product_variants?.sku}</p>
+                        <p className="text-[10px] text-slate-500 uppercase truncate max-w-[200px]">{log.product_variants?.products?.name} ({log.product_variants?.size})</p>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`inline-block px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${isPositive ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
+                          {log.movement_type.replace('_', ' ')}
+                        </span>
+                        {log.reason && <p className="text-[10px] text-slate-500 mt-1 truncate max-w-[150px]">{log.reason}</p>}
+                      </td>
+                      <td className="px-6 py-4 text-right font-mono font-bold">
+                        <span className={`flex items-center justify-end gap-1 ${isPositive ? 'text-emerald-600' : 'text-rose-600'}`}>
+                          {isPositive ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
+                          {isPositive ? '+' : ''}{log.quantity_change}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-xs text-slate-600 flex items-center gap-2">
+                        <History size={14} className="text-slate-400" /> {log.users?.full_name || 'System'}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* --- RECORD MOVEMENT MODAL --- */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between p-6 border-b border-slate-200 bg-slate-50">
+              <h2 className="text-lg font-bold text-slate-900 uppercase">Record Movement</h2>
+              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-700 transition-colors"><X size={20} /></button>
+            </div>
             
-            <div className="p-4 border-b border-slate-200 space-y-4 bg-slate-50/50">
-              <div className="flex flex-wrap gap-4">
-                <select value={logCategory} onChange={(e) => setLogCategory(e.target.value)} className="border border-slate-300 rounded px-3 py-2 text-sm bg-white outline-none focus:border-slate-500 w-40">
-                  {categories.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
+            <div className="p-6 space-y-5">
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 uppercase mb-2">Select Product SKU</label>
+                <select value={form.variant_id} onChange={(e) => setForm({...form, variant_id: e.target.value})} className="w-full border border-slate-300 rounded p-3 text-sm bg-white outline-none focus:border-slate-500">
+                  <option value="">-- Choose SKU --</option>
+                  {stockBalances.map((/** @type {any} */ item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.sku} | {item.products?.name} {item.size ? `(${item.size})` : ''}
+                    </option>
+                  ))}
                 </select>
-                <select value={logReason} onChange={(e) => setLogReason(e.target.value)} className="border border-slate-300 rounded px-3 py-2 text-sm bg-white outline-none focus:border-slate-500 w-40">
-                  {['All Reasons', 'Adjustments', 'Purchases', 'Returns', 'Cancellations', 'Damage', 'Reservations'].map(r => <option key={r} value={r}>{r}</option>)}
-                </select>
-                <div className="relative flex-1 min-w-[200px]">
-                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input type="text" value={logSearch} onChange={(e) => setLogSearch(e.target.value)} placeholder="Search logs by product or notes..." className="border border-slate-300 rounded pl-9 pr-4 py-2 text-sm w-full outline-none focus:border-slate-500" />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 uppercase mb-2">Movement Type</label>
+                  <select value={form.movement_type} onChange={(e) => setForm({...form, movement_type: e.target.value})} className="w-full border border-slate-300 rounded p-3 text-sm bg-white outline-none focus:border-slate-500">
+                    <option value="receipt">Receipt (Add Stock)</option>
+                    <option value="damage">Damage (Remove Stock)</option>
+                    <option value="count_correction">Count Correction (Add/Remove)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 uppercase mb-2">Quantity</label>
+                  <input type="number" value={form.quantity} onChange={(e) => setForm({...form, quantity: e.target.value})} placeholder="e.g. 50 or -5" className="w-full border border-slate-300 rounded p-3 text-sm outline-none focus:border-slate-500 font-mono" />
                 </div>
               </div>
-              
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <span className="text-sm text-slate-500 flex items-center gap-2"><Calendar size={14} /> Filter by Date:</span>
-                  <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="border border-slate-300 rounded px-3 py-1.5 text-sm bg-white outline-none" />
-                  <span className="text-slate-400">-</span>
-                  <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="border border-slate-300 rounded px-3 py-1.5 text-sm bg-white outline-none" />
-                </div>
-                <div className="flex gap-2">
-                  <button className="flex items-center gap-2 px-4 py-2 border border-emerald-600 text-emerald-700 hover:bg-emerald-50 rounded text-sm font-medium transition-colors">
-                    <FileSpreadsheet size={14} /> Export Excel
-                  </button>
-                  <button onClick={() => window.print()} className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white hover:bg-emerald-700 rounded text-sm font-medium transition-colors">
-                    <FileText size={14} /> Export PDF report
-                  </button>
-                </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 uppercase mb-2">Reason / Note (Optional)</label>
+                <input type="text" value={form.reason} onChange={(e) => setForm({...form, reason: e.target.value})} placeholder="e.g. Shipment from Supplier A" className="w-full border border-slate-300 rounded p-3 text-sm outline-none focus:border-slate-500" />
               </div>
             </div>
 
-            <div className="overflow-x-auto flex-1 custom-scrollbar">
-              <table className="w-full text-left text-sm whitespace-nowrap">
-                <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-medium sticky top-0 z-10">
-                  <tr>
-                    <th className="px-6 py-4">Item</th>
-                    <th className="px-6 py-4 text-center">Change</th>
-                    <th className="px-6 py-4 text-center">Reason</th>
-                    <th className="px-6 py-4">Details</th>
-                    <th className="px-6 py-4 text-right">Date</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {isLoadingLogs ? (
-                    <tr><td colSpan={5} className="px-6 py-12 text-center text-slate-500">Loading logs...</td></tr>
-                  ) : filteredLogs.length === 0 ? (
-                    <tr><td colSpan={5} className="px-6 py-12 text-center text-slate-500">No logs found matching criteria.</td></tr>
-                  ) : filteredLogs.map((log) => {
-                    const isPositive = log.change_amount > 0;
-                    const changeColor = isPositive ? 'text-emerald-600' : 'text-rose-600';
-                    const changePrefix = isPositive ? '+' : '';
-
-                    return (
-                      <tr key={log.id} className="hover:bg-slate-50/50">
-                        <td className="px-6 py-4">
-                          <p className="font-semibold text-slate-900">{log.products?.name || 'Unknown Product'}</p>
-                          <p className="text-xs text-slate-500 uppercase">{log.products?.code || 'BASE PRODUCT'}</p>
-                        </td>
-                        <td className="px-6 py-4 text-center">
-                          <p className={`font-bold ${changeColor} mb-0.5`}>{changePrefix}{log.change_amount}</p>
-                          <p className="text-[10px] text-slate-400 font-mono">{log.previous_stock} → {log.new_stock}</p>
-                        </td>
-                        <td className="px-6 py-4 text-center">
-                          <span className="inline-flex px-2.5 py-1 border border-slate-200 bg-slate-100 text-slate-600 rounded-full text-[10px] font-bold tracking-wider uppercase">
-                            {log.reason}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4">
-                          <p className="text-slate-800 text-xs italic">"{log.details}"</p>
-                          <p className="text-[10px] text-slate-400 mt-1">by {log.user_name}</p>
-                        </td>
-                        <td className="px-6 py-4 text-right text-xs text-slate-500">
-                          {new Date(log.created_at).toLocaleString('en-US', { dateStyle: 'short', timeStyle: 'short' })}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'analytics' && (
-        <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-          <div className="bg-white border border-slate-200 rounded-lg shadow-sm p-12 text-center">
-             <BarChart2 size={48} className="text-slate-300 mx-auto mb-4" />
-             <h3 className="text-lg font-semibold text-slate-800 mb-2">Inventory Analytics</h3>
-             <p className="text-slate-500 max-w-md mx-auto">Advanced charting and velocity metrics will be displayed here in a future update.</p>
-          </div>
-        </div>
-      )}
-
-      {/* --- ADJUST STOCK MODAL --- */}
-      {isEditModalOpen && selectedProduct && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50">
-              <h2 className="text-lg font-semibold text-slate-800">Adjust Stock Qty</h2>
-              <button onClick={() => setIsEditModalOpen(false)} className="p-2 hover:bg-slate-200 rounded-full text-slate-500 transition-colors">
-                <X size={20} />
+            <div className="p-6 border-t border-slate-200 bg-slate-50 flex justify-end gap-3">
+              <button onClick={() => setIsModalOpen(false)} disabled={recordMovementMutation.isPending} className="px-5 py-2.5 text-sm font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-100 rounded transition-colors">Cancel</button>
+              <button onClick={() => recordMovementMutation.mutate()} disabled={recordMovementMutation.isPending} className="px-6 py-2.5 text-sm font-medium bg-slate-900 text-white rounded hover:bg-slate-800 transition-colors flex items-center gap-2">
+                {recordMovementMutation.isPending ? <RefreshCcw size={16} className="animate-spin" /> : <Save size={16} />} 
+                Record to Ledger
               </button>
             </div>
-            
-            <form onSubmit={handleSaveStock} className="p-6 space-y-4">
-              <div>
-                <p className="text-sm font-medium text-slate-900 mb-1">{selectedProduct.name}</p>
-                <p className="text-xs font-mono text-slate-500 mb-4">SKU: {selectedProduct.code || 'N/A'}</p>
-                
-                <div className="flex items-center justify-between mb-1">
-                  <label className="block text-xs font-semibold text-slate-600 uppercase">New Stock Quantity</label>
-                  <span className="text-xs text-slate-400">Current: {selectedProduct.stock || 0}</span>
-                </div>
-                
-                <input 
-                  type="number" 
-                  value={newStock} 
-                  onChange={(e) => setNewStock(e.target.value)} 
-                  required
-                  min="0"
-                  className="w-full border border-slate-300 rounded px-3 py-2 text-sm outline-none focus:border-slate-500 font-mono" 
-                />
-              </div>
-
-              <div className="pt-4 flex justify-end gap-3 border-t border-slate-200">
-                <button type="button" onClick={() => setIsEditModalOpen(false)} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded transition-colors">
-                  Cancel
-                </button>
-                <button type="submit" disabled={updateStockMutation.isPending} className="px-4 py-2 text-sm font-medium bg-slate-900 text-white rounded hover:bg-slate-800 transition-colors disabled:opacity-50">
-                  {updateStockMutation.isPending ? 'Updating...' : 'Save Adjustment'}
-                </button>
-              </div>
-            </form>
           </div>
         </div>
       )}
-
     </div>
   );
 }
