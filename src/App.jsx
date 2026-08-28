@@ -26,6 +26,7 @@ import AdminPermissions from '@/pages/admin/Permissions';
 import AdminUsers from '@/pages/admin/Users';
 import AdminActivityLogs from '@/pages/admin/ActivityLogs';
 import AdminSecurity from '@/pages/admin/Security';
+import AdminReports from '@/pages/admin/Reports';
 
 // Auth Imports
 import Login from '@/pages/Login';
@@ -94,6 +95,7 @@ const AdminApp = () => {
         <Route path="customers" element={<AdminCustomers />} />
         <Route path="payments" element={<AdminPaymentHistory />} />
         <Route path="orders" element={<AdminOrders />} />
+        <Route path="reports" element={<AdminReports />} />
         <Route path="web-setup" element={<AdminWebSetup />} />
         <Route path="roles" element={<AdminRoles />} />
         <Route path="roles/create" element={<AdminCreateRole />} />

@@ -6,7 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { 
   LayoutDashboard, ShoppingCart, CreditCard, Users, 
-  Package, Settings, LogOut, ChevronDown, ChevronRight, Shield
+  Package, Settings, LogOut, ChevronDown, ChevronRight, Shield, FileText
 } from "lucide-react";
 
 export default function AdminLayout() {
@@ -56,8 +56,8 @@ export default function AdminLayout() {
       }
 
       // Otherwise, flatten their permissions into a simple array like ['orders:read', 'products:create']
-      const perms = data?.admin_roles?.admin_role_permissions?.map(rp => rp.admin_permissions) || [];
-      return perms.map(p => `${p.resource}:${p.action}`);
+      const perms = data?.admin_roles?.admin_role_permissions?.map((/** @type {any} */ rp) => rp.admin_permissions) || [];
+      return perms.map((/** @type {any} */ p) => `${p.resource}:${p.action}`);
     },
     enabled: !!actualUser?.id,
     staleTime: 5 * 60 * 1000 // Cache for 5 mins
@@ -136,6 +136,12 @@ export default function AdminLayout() {
           {hasAccess('orders') && (
             <Link to="/payments" className={navItemClass("/payments")}>
               <CreditCard size={18} /> Payment History
+            </Link>
+          )}
+
+          {hasAccess('exports', 'execute') && (
+            <Link to="/reports" className={navItemClass("/reports")}>
+              <FileText size={18} /> Reports & Exports
             </Link>
           )}
           
