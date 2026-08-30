@@ -6,7 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { 
   LayoutDashboard, ShoppingCart, CreditCard, Users, 
-  Package, Settings, LogOut, ChevronDown, ChevronRight, Shield, FileText
+  Package, Settings, LogOut, ChevronDown, ChevronRight, Shield, FileText, Briefcase
 } from "lucide-react";
 
 export default function AdminLayout() {
@@ -15,12 +15,10 @@ export default function AdminLayout() {
   const [searchParams] = useSearchParams();
   const { user, logout } = useAuth();
   
-  const [openMenus, setOpenMenus] = useState({ products: false, webSetting: true, generalSetup: true, role: true });
+  const [openMenus, setOpenMenus] = useState({ products: false, webSetting: true, generalSetup: true, role: true, b2b: false });
 
-  // 1. Resolve actual user object
   const actualUser = user?.email ? user : user?.user;
   
-  // 2. Fetch User Permissions globally for the layout
   const { data: userPermissions = [], isLoading: permsLoading } = useQuery({
     queryKey: ['my-permissions', actualUser?.id],
     queryFn: async () => {
@@ -42,7 +40,7 @@ export default function AdminLayout() {
         .eq('user_id', actualUser.id)
         .single();
 
-      if (error && error.code !== 'PGRST116') { // Ignore "no rows returned" error
+      if (error && error.code !== 'PGRST116') {
         console.error("Error fetching permissions:", error);
         return [];
       }
@@ -50,20 +48,17 @@ export default function AdminLayout() {
       const roleName = data?.admin_roles?.name;
       const isOwner = ['jackstyle4@gmail.com', 'noirmtd@gmail.com', 'admin@testing.com'].includes(actualUser.email.toLowerCase());
       
-      // If user is a store owner or explicitly assigned SUPER_ADMIN, grant universal bypass
       if (isOwner || roleName === 'SUPER_ADMIN') {
         return ['SUPER_ADMIN']; 
       }
 
-      // Otherwise, flatten their permissions into a simple array like ['orders:read', 'products:create']
       const perms = data?.admin_roles?.admin_role_permissions?.map((/** @type {any} */ rp) => rp.admin_permissions) || [];
       return perms.map((/** @type {any} */ p) => `${p.resource}:${p.action}`);
     },
     enabled: !!actualUser?.id,
-    staleTime: 5 * 60 * 1000 // Cache for 5 mins
+    staleTime: 5 * 60 * 1000 
   });
 
-  // 3. Helper function to verify access
   const hasAccess = (/** @type {string} */ resource, /** @type {string} */ action = 'read') => {
     if (userPermissions.includes('SUPER_ADMIN')) return true;
     return userPermissions.includes(`${resource}:${action}`);
@@ -101,7 +96,6 @@ export default function AdminLayout() {
     location.pathname.startsWith(path) ? "text-slate-900 font-semibold" : "text-slate-500 hover:text-slate-900"
   }`;
 
-  // Prevent UI flashing while checking security rules
   if (permsLoading) {
     return (
       <div className="min-h-screen bg-[#F8F9FA] flex items-center justify-center">
@@ -112,7 +106,6 @@ export default function AdminLayout() {
 
   return (
     <div className="min-h-screen bg-[#F8F9FA] flex font-sans">
-      {/* Sidebar */}
       <aside className="w-64 shrink-0 hidden md:flex flex-col fixed inset-y-0 left-0 bg-white border-r border-slate-200 z-50">
         <div className="h-16 flex items-center px-6 border-b border-slate-200">
           <a href="/" className="flex items-center gap-2">
@@ -122,7 +115,6 @@ export default function AdminLayout() {
         
         <nav className="flex-1 overflow-y-auto py-4 custom-scrollbar">
           
-          {/* Dashboard */}
           <Link to="/" className={navItemClass("/", true)}>
             <LayoutDashboard size={18} /> Dashboard
           </Link>
@@ -137,6 +129,22 @@ export default function AdminLayout() {
             <Link to="/payments" className={navItemClass("/payments")}>
               <CreditCard size={18} /> Payment History
             </Link>
+          )}
+
+          {/* B2B Management Section */}
+          {hasAccess('b2b', 'manage') && (
+            <div>
+              <button onClick={() => toggleMenu('b2b')} className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-slate-600 hover:bg-slate-50">
+                <div className="flex items-center gap-3"><Briefcase size={18} /> B2B Portal</div>
+                {openMenus.b2b ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+              </button>
+              {openMenus.b2b && (
+                <div className="bg-slate-50 py-1 border-y border-slate-100">
+                  <Link to="/b2b/companies" className={activeSubClass('/b2b/companies')}>— Companies</Link>
+                  <Link to="/b2b/price-lists" className={activeSubClass('/b2b/price-lists')}>— Price Lists</Link>
+                </div>
+              )}
+            </div>
           )}
 
           {hasAccess('exports', 'execute') && (
@@ -221,7 +229,6 @@ export default function AdminLayout() {
         </nav>
       </aside>
 
-      {/* Main Content Area */}
       <div className="flex-1 md:ml-64 flex flex-col min-h-screen">
         <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 sticky top-0 z-40">
            <div className="flex items-center gap-4">

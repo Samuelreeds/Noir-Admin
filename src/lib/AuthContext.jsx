@@ -1,14 +1,14 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 
-const AuthContext = createContext();
+// Pass null as the default value to satisfy strict type checking
+const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(/** @type {any} */ (null));
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   
-  // Kept for backward compatibility so other components don't crash
   const [isLoadingPublicSettings, setIsLoadingPublicSettings] = useState(false);
   const [appPublicSettings, setAppPublicSettings] = useState(null); 
   
@@ -18,7 +18,6 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     checkUserAuth();
 
-    // Set up a listener for when the user logs in/out in other tabs
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
@@ -35,7 +34,6 @@ export const AuthProvider = ({ children }) => {
     };
   }, []);
 
-  // Maintained to avoid breaking components expecting this function
   const checkAppState = async () => {
     await checkUserAuth();
   };
@@ -50,10 +48,9 @@ export const AuthProvider = ({ children }) => {
       if (sessionError) throw sessionError;
 
       if (session?.user) {
-        // Fetch extended profile data (roles, full name, etc.)
         const { data: profile } = await supabase
           .from('profiles')
-          .select('*')
+          .select('*, b2b_companies(company_name, status, price_list_id)')
           .eq('id', session.user.id)
           .single();
 

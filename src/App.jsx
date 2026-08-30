@@ -28,6 +28,10 @@ import AdminActivityLogs from '@/pages/admin/ActivityLogs';
 import AdminSecurity from '@/pages/admin/Security';
 import AdminReports from '@/pages/admin/Reports';
 
+// --- NEW B2B IMPORTS ---
+import AdminB2BCompanies from '@/pages/admin/B2BCompanies';
+import AdminB2BPriceLists from '@/pages/admin/B2BPriceLists';
+
 // Auth Imports
 import Login from '@/pages/Login';
 
@@ -84,6 +88,11 @@ const AdminApp = () => {
     <Routes>
       <Route path="/" element={<AdminLayout />}>
         <Route index element={<AdminDashboard />} />
+        
+        {/* B2B Routes */}
+        <Route path="b2b/companies" element={<AdminB2BCompanies />} />
+        <Route path="b2b/price-lists" element={<AdminB2BPriceLists />} />
+
         <Route path="products" element={<AdminProducts />} />
         <Route path="products/inventory" element={<AdminInventory />} />
         <Route path="products/size" element={<AdminSizes />} />
