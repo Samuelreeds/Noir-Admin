@@ -35,18 +35,36 @@ export default function Inventory() {
   const { data: stockBalances = [], isLoading: loadingBalances } = useQuery({
     queryKey: ['admin-inventory-balances'],
     queryFn: async () => {
-      const { data, error } = await supabase
+      // 1. Fetch core variants and product details (No View Join)
+      const { data: variants, error } = await supabase
         .from('product_variants')
         .select(`
           id, sku, size, scent, price,
-          products ( name, image ),
-          variant_stock_balances ( on_hand, reserved, available )
+          products ( name, image )
         `)
         .eq('is_active', true)
         .order('sku', { ascending: true });
         
       if (error) throw error;
-      return data || [];
+      if (!variants || variants.length === 0) return [];
+
+      // 2. Fetch live stock balances in parallel
+      const variantIds = variants.map(v => v.id);
+      const { data: balances, error: balanceError } = await supabase
+        .from('variant_stock_balances')
+        .select('*')
+        .in('variant_id', variantIds);
+        
+      if (balanceError) console.warn("Balance fetch error:", balanceError);
+
+      const balancesMap = {};
+      balances?.forEach(b => { balancesMap[b.variant_id] = b; });
+
+      // 3. Merge them securely in the browser
+      return variants.map(v => ({
+        ...v,
+        variant_stock_balances: [balancesMap[v.id] || { available: 0, reserved: 0, on_hand: 0 }]
+      }));
     }
   });
 
