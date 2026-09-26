@@ -58,8 +58,7 @@ export default function Inventory() {
         .select(`
           id, movement_type, quantity_change, reason, created_at, warehouse,
           batch_lot, expiry_date, supplier, purchase_order,
-          product_variants ( sku, size, products ( name ) ),
-          users ( full_name )
+          product_variants ( sku, size, products ( name ) )
         `)
         .order('created_at', { ascending: false })
         .limit(100);
