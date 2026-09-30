@@ -28,24 +28,18 @@ import AdminActivityLogs from '@/pages/admin/ActivityLogs';
 import AdminSecurity from '@/pages/admin/Security';
 import AdminReports from '@/pages/admin/Reports';
 
-// --- NEW B2B IMPORTS ---
+// --- B2B IMPORTS ---
 import AdminB2BCompanies from '@/pages/admin/B2BCompanies';
 import AdminB2BPriceLists from '@/pages/admin/B2BPriceLists';
+import AdminB2BQuotations from '@/pages/admin/B2BQuotations';
 
 // Auth Imports
 import Login from '@/pages/Login';
 
 // --- ADMIN VERIFICATION LOGIC ---
-const HARDCODED_ADMINS = [
-  'jackstyle4@gmail.com',
-  'noirmtd@gmail.com',
-  'admin@testing.com'
-];
-
 const getAdminEmails = () => {
   const envEmails = import.meta.env.VITE_ADMIN_EMAILS || "";
-  const parsedEnv = envEmails.split(',').map(email => email.trim().toLowerCase()).filter(Boolean);
-  return [...new Set([...HARDCODED_ADMINS, ...parsedEnv])];
+  return envEmails.split(',').map(email => email.trim().toLowerCase()).filter(Boolean);
 };
 
 const ADMIN_EMAILS = getAdminEmails();
@@ -92,6 +86,7 @@ const AdminApp = () => {
         {/* B2B Routes */}
         <Route path="b2b/companies" element={<AdminB2BCompanies />} />
         <Route path="b2b/price-lists" element={<AdminB2BPriceLists />} />
+        <Route path="b2b/quotations" element={<AdminB2BQuotations />} />
 
         <Route path="products" element={<AdminProducts />} />
         <Route path="products/inventory" element={<AdminInventory />} />

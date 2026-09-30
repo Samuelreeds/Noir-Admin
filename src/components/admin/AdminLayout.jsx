@@ -142,6 +142,7 @@ export default function AdminLayout() {
                 <div className="bg-slate-50 py-1 border-y border-slate-100">
                   <Link to="/b2b/companies" className={activeSubClass('/b2b/companies')}>— Companies</Link>
                   <Link to="/b2b/price-lists" className={activeSubClass('/b2b/price-lists')}>— Price Lists</Link>
+                  <Link to="/b2b/quotations" className={activeSubClass('/b2b/quotations')}>— Quotations</Link>
                 </div>
               )}
             </div>
