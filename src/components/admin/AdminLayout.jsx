@@ -46,7 +46,13 @@ export default function AdminLayout() {
       }
 
       const roleName = data?.admin_roles?.name;
-      const isOwner = ['jackstyle4@gmail.com', 'noirmtd@gmail.com', 'admin@testing.com'].includes(actualUser.email.toLowerCase());
+      
+      // --- PHASE 4 SECURITY PATCH ---
+      // Replaced hardcoded test identities with secure environment variable mapping
+      const adminEmailsEnv = import.meta.env.VITE_ADMIN_EMAILS || "";
+      const adminEmails = adminEmailsEnv.split(",").map((/** @type {string} */ e) => e.trim().toLowerCase());
+      const isOwner = actualUser?.email && adminEmails.includes(actualUser.email.toLowerCase());
+      // ------------------------------
       
       if (isOwner || roleName === 'SUPER_ADMIN') {
         return ['SUPER_ADMIN']; 

@@ -36,6 +36,10 @@ import AdminB2BQuotations from '@/pages/admin/B2BQuotations';
 // Auth Imports
 import Login from '@/pages/Login';
 
+import {initGlobalErrorMonitor, AppErrorBoundary } from '@/lib/error-monitor';
+
+initGlobalErrorMonitor();
+
 // --- ADMIN VERIFICATION LOGIC ---
 const getAdminEmails = () => {
   const envEmails = import.meta.env.VITE_ADMIN_EMAILS || "";
@@ -118,18 +122,19 @@ const AdminApp = () => {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <QueryClientProvider client={queryClientInstance}>
-        <Router>
-          <ScrollToTop />
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            {/* All other routes get passed to the Admin logic */}
-            <Route path="/*" element={<AdminApp />} />
-          </Routes>
-        </Router>
-        <Toaster />
-      </QueryClientProvider>
-    </AuthProvider>
+    <AppErrorBoundary>
+      <AuthProvider>
+        <QueryClientProvider client={queryClientInstance}>
+          <Router>
+            <ScrollToTop />
+            <Routes>
+              <Route path="/login" element={<Login />} />
+              <Route path="/*" element={<AdminApp />} />
+            </Routes>
+          </Router>
+          <Toaster />
+        </QueryClientProvider>
+      </AuthProvider>
+    </AppErrorBoundary>
   )
 }
