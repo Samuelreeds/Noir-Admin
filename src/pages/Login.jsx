@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useState, useEffect, useRef } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,6 +18,7 @@ const getAdminEmails = () => {
 const ADMIN_EMAILS = getAdminEmails();
 
 export default function Login() {
+  const navigate = useNavigate(); // NEW: Client-side routing to prevent reload race conditions
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -34,29 +35,44 @@ export default function Login() {
   const telegramWrapperRef = useRef(null);
   const isTelegramInjected = useRef(false);
 
+  // NEW: Auto-redirect if already logged in so users don't get stuck on this page
+  useEffect(() => {
+    const checkExistingSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        const userEmail = session.user.email?.toLowerCase().trim() || "";
+        if (ADMIN_EMAILS.includes(userEmail) || session.user.user_metadata?.role === 'admin') {
+          navigate("/admin", { replace: true });
+        } else {
+          navigate("/", { replace: true });
+        }
+      }
+    };
+    checkExistingSession();
+  }, [navigate]);
+
   const handleSubmit = async (/** @type {React.FormEvent} */ e) => {
     e.preventDefault();
     setError("");
     setLoading(true);
     try {
-      const { error: signInError } = await supabase.auth.signInWithPassword({
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
       if (signInError) throw signInError;
       
-      // Route based on email address
-      const userEmail = email.toLowerCase().trim();
-      if (ADMIN_EMAILS.includes(userEmail)) {
-        window.location.href = "/admin";
+      // Route based on email address using React Router
+      const userEmail = data.user?.email?.toLowerCase().trim() || email.toLowerCase().trim();
+      if (ADMIN_EMAILS.includes(userEmail) || data.user?.user_metadata?.role === 'admin') {
+        navigate("/admin", { replace: true });
       } else {
-        window.location.href = "/";
+        navigate("/", { replace: true });
       }
       
     } catch (/** @type {any} */ err) {
       setError(err.message || "Invalid email or password");
-    } finally {
-      setLoading(false);
+      setLoading(false); // Only stop loading if there's an error, otherwise let the redirect happen
     }
   };
 
@@ -72,19 +88,19 @@ export default function Login() {
       if (functionError) throw functionError;
       if (data?.error) throw new Error(data.error);
 
-      const { error: signInError } = await supabase.auth.signInWithPassword({
+      const { data: authData, error: signInError } = await supabase.auth.signInWithPassword({
         email: data.email,
         password: data.password,
       });
 
       if (signInError) throw signInError;
       
-      // Route based on Telegram's connected email address
-      const userEmail = data.email.toLowerCase().trim();
-      if (ADMIN_EMAILS.includes(userEmail)) {
-        window.location.href = "/admin";
+      // Route based on Telegram's connected email address using React Router
+      const userEmail = authData.user?.email?.toLowerCase().trim() || data.email.toLowerCase().trim();
+      if (ADMIN_EMAILS.includes(userEmail) || authData.user?.user_metadata?.role === 'admin') {
+        navigate("/admin", { replace: true });
       } else {
-        window.location.href = "/";
+        navigate("/", { replace: true });
       }
       
     } catch (err) {

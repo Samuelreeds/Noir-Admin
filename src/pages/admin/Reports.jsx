@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useState } from 'react';
-import { Download, Calendar, RefreshCcw, FileSpreadsheet, Package, Users, ShoppingCart, DollarSign, ArrowRightLeft, Target } from 'lucide-react';
+import { Download, Calendar, RefreshCcw, FileSpreadsheet, Package, Users, ShoppingCart, DollarSign, ArrowRightLeft, Target, Briefcase } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useMutation } from '@tanstack/react-query';
 
@@ -13,7 +13,11 @@ const EXPORT_TYPES = [
   { id: 'customers', title: 'Customer Demographics', icon: Users, desc: 'Customer registration dates, total lifetime value, and order frequencies.', rpc: 'export_customers', needsDate: true },
   { id: 'products', title: 'Products & SKUs', icon: Package, desc: 'Global catalogue extract including base prices, costs, and active status.', rpc: 'export_products', needsDate: false },
   { id: 'net_sales', title: 'Net Sales Report', icon: DollarSign, desc: 'Aggregated accounting calculation of Gross Sales minus Refunds over time.', rpc: 'export_net_sales', needsDate: true },
-  { id: 'channels', title: 'Sales Channel Performance', icon: Target, desc: 'Revenue attribution across tracked sales channels (Website, FB, etc.).', rpc: 'export_channels', needsDate: true }
+  { id: 'channels', title: 'Sales Channel Performance', icon: Target, desc: 'Revenue attribution across tracked sales channels (Website, FB, etc.).', rpc: 'export_channels', needsDate: true },
+  
+  // --- PHASE 4.5 FINANCIAL TRACKER EXPORTS ---
+  { id: 'finance_sales', title: 'Finance Sales Log', icon: Briefcase, desc: 'Detailed financial snapshot including COGS, Output VAT, and Contribution margins.', rpc: 'export_finance_sales_log', needsDate: true },
+  { id: 'finance_expenses', title: 'Company Expenses', icon: FileSpreadsheet, desc: 'Operational expenses, overhead, and Input VAT tracking.', rpc: 'export_finance_expenses', needsDate: true }
 ];
 
 export default function Reports() {
@@ -56,6 +60,7 @@ export default function Reports() {
       
       if (error) {
         if (error.message.includes('RBAC')) throw new Error("Permission Denied: You do not have 'exports:execute' clearance.");
+        if (error.message.includes('Could not find the function')) throw new Error(`Database RPC '${exportConfig.rpc}' is missing. Please ensure backend migrations are applied.`);
         throw error;
       }
       return { data, id: exportConfig.id };
