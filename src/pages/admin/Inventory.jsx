@@ -1,6 +1,7 @@
 // @ts-nocheck
 import React, { useState } from 'react';
-import { Package, Plus, Search, History, ArrowDownRight, ArrowUpRight, Save, X, RefreshCcw, Calendar, Truck, ShieldCheck, FileDigit, ArrowRightLeft, MapPin } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Package, Plus, Search, History, ArrowDownRight, ArrowUpRight, Save, X, RefreshCcw, Calendar, ShieldCheck, FileDigit, ArrowRightLeft, MapPin, Archive, Edit } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
@@ -10,6 +11,7 @@ export default function Inventory() {
   const [activeTab, setActiveTab] = useState('balances');
   const [searchQuery, setSearchQuery] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [variantToArchive, setVariantToArchive] = useState(/** @type {any} */ (null));
   const [idempotencyKey, setIdempotencyKey] = useState('');
   const [successMessage, setSuccessMessage] = useState(/** @type {string | null} */ (null));
   
@@ -32,10 +34,10 @@ export default function Inventory() {
 
   const queryClient = useQueryClient();
 
+  // FETCH: Inventory Balances (Queries the single source of truth for SKUs and joins the View)
   const { data: stockBalances = [], isLoading: loadingBalances } = useQuery({
     queryKey: ['admin-inventory-balances'],
     queryFn: async () => {
-      // 1. Fetch core variants and product details (No View Join)
       const { data: variants, error } = await supabase
         .from('product_variants')
         .select(`
@@ -48,7 +50,6 @@ export default function Inventory() {
       if (error) throw error;
       if (!variants || variants.length === 0) return [];
 
-      // 2. Fetch live stock balances in parallel
       const variantIds = variants.map(v => v.id);
       const { data: balances, error: balanceError } = await supabase
         .from('variant_stock_balances')
@@ -60,7 +61,6 @@ export default function Inventory() {
       const balancesMap = {};
       balances?.forEach(b => { balancesMap[b.variant_id] = b; });
 
-      // 3. Merge them securely in the browser
       return variants.map(v => ({
         ...v,
         variant_stock_balances: [balancesMap[v.id] || { available: 0, reserved: 0, on_hand: 0 }]
@@ -68,6 +68,7 @@ export default function Inventory() {
     }
   });
 
+  // FETCH: Ledger History
   const { data: ledgerHistory = [], isLoading: loadingHistory } = useQuery({
     queryKey: ['admin-inventory-history'],
     queryFn: async () => {
@@ -86,6 +87,7 @@ export default function Inventory() {
     }
   });
 
+  // MUTATION: Ledger Movements (Reuses existing inventory functions)
   const recordMovementMutation = useMutation({
     mutationFn: async () => {
       if (!form.variant_id || !form.quantity || !form.movement_type) {
@@ -96,21 +98,13 @@ export default function Inventory() {
       if (isNaN(qty) || qty <= 0) throw new Error("Quantity must be a positive number greater than zero.");
 
       if (form.movement_type === 'transfer') {
-        if (form.source_warehouse === form.destination_warehouse) {
-           throw new Error("Source and Destination warehouses cannot be the same.");
-        }
+        if (form.source_warehouse === form.destination_warehouse) throw new Error("Source and Destination warehouses cannot be the same.");
         
-        // Execute Atomic Transfer RPC
         const { error } = await supabase.rpc('transfer_inventory', {
-          p_variant_id: form.variant_id,
-          p_quantity: qty,
-          p_source_warehouse: form.source_warehouse,
-          p_destination_warehouse: form.destination_warehouse,
-          p_batch_lot: form.batch_lot || null,
-          p_manufacturing_date: form.manufacturing_date || null,
-          p_expiry_date: form.expiry_date || null,
-          p_reason: form.reason || null,
-          p_idempotency_key: idempotencyKey
+          p_variant_id: form.variant_id, p_quantity: qty, p_source_warehouse: form.source_warehouse,
+          p_destination_warehouse: form.destination_warehouse, p_batch_lot: form.batch_lot || null,
+          p_manufacturing_date: form.manufacturing_date || null, p_expiry_date: form.expiry_date || null,
+          p_reason: form.reason || null, p_idempotency_key: idempotencyKey
         });
 
         if (error) {
@@ -118,9 +112,7 @@ export default function Inventory() {
           throw new Error(error.message);
         }
         return { ...form, quantity_change: qty, movement_type: 'transfer' };
-      } 
-      else {
-        // Execute Standard Receipt or Adjustment
+      } else {
         if (form.manufacturing_date && form.expiry_date && new Date(form.expiry_date) < new Date(form.manufacturing_date)) {
           throw new Error("Expiry date cannot precede manufacturing date.");
         }
@@ -132,19 +124,11 @@ export default function Inventory() {
         const { data: authData } = await supabase.auth.getUser();
 
         const payload = {
-          variant_id: form.variant_id,
-          movement_type: form.movement_type,
-          quantity_change: qty,
-          reason: form.reason || null,
-          recorded_by: authData?.user?.id || null,
-          batch_lot: form.batch_lot || null,
-          supplier: form.supplier || null,
-          purchase_order: form.purchase_order || null,
-          manufacturing_date: form.manufacturing_date || null,
-          expiry_date: form.expiry_date || null,
-          warehouse: form.warehouse,
-          quality_status: form.quality_status,
-          idempotency_key: idempotencyKey
+          variant_id: form.variant_id, movement_type: form.movement_type, quantity_change: qty,
+          reason: form.reason || null, recorded_by: authData?.user?.id || null, batch_lot: form.batch_lot || null,
+          supplier: form.supplier || null, purchase_order: form.purchase_order || null,
+          manufacturing_date: form.manufacturing_date || null, expiry_date: form.expiry_date || null,
+          warehouse: form.warehouse, quality_status: form.quality_status, idempotency_key: idempotencyKey
         };
 
         const { error } = await supabase.from('inventory_ledger').insert([payload]);
@@ -160,7 +144,7 @@ export default function Inventory() {
       queryClient.invalidateQueries({ queryKey: ['admin-inventory-history'] });
       
       const variant = stockBalances.find((/** @type {any} */ v) => v.id === payload.variant_id);
-      setSuccessMessage(`Successfully processed ${payload.movement_type.replace('_', ' ').toUpperCase()} for ${Math.abs(payload.quantity_change)} units of ${variant?.sku}.`);
+      setSuccessMessage(`Successfully processed ${payload.movement_type.replace('_', ' ').toUpperCase()} for ${Math.abs(payload.quantity_change)} units of ${variant?.sku || 'the item'}.`);
       
       setTimeout(() => {
         setSuccessMessage(null);
@@ -171,8 +155,21 @@ export default function Inventory() {
     onError: (err) => alert(err.message)
   });
 
-  const openModal = (/** @type {string} */ type = 'receipt') => {
-    setForm({ ...defaultForm, movement_type: type });
+  // MUTATION: Safe Archival
+  const archiveVariantMutation = useMutation({
+    mutationFn: async (/** @type {string} */ id) => {
+      const { error } = await supabase.from('product_variants').update({ is_active: false }).eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-inventory-balances'] });
+      setVariantToArchive(null);
+    },
+    onError: (err) => alert("Failed to archive SKU: " + err.message)
+  });
+
+  const openModal = (/** @type {string} */ type = 'receipt', /** @type {string} */ prefillVariantId = '') => {
+    setForm({ ...defaultForm, movement_type: type, variant_id: prefillVariantId });
     setIdempotencyKey(generateIdempotencyKey());
     setIsModalOpen(true);
   };
@@ -229,14 +226,15 @@ export default function Inventory() {
                 <th className="px-6 py-4">Product Details</th>
                 <th className="px-6 py-4 text-center text-blue-700 bg-blue-50/50">Available</th>
                 <th className="px-6 py-4 text-center text-amber-700 bg-amber-50/50">Reserved (Orders)</th>
-                <th className="px-6 py-4 text-center text-slate-800 bg-slate-100">Total Physical On-Hand</th>
+                <th className="px-6 py-4 text-center text-slate-800 bg-slate-100">Physical On-Hand</th>
+                <th className="px-6 py-4 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loadingBalances ? (
-                <tr><td colSpan={5} className="px-6 py-12 text-center text-slate-500">Calculating inventory...</td></tr>
+                <tr><td colSpan={6} className="px-6 py-12 text-center text-slate-500">Calculating inventory...</td></tr>
               ) : filteredBalances.length === 0 ? (
-                <tr><td colSpan={5} className="px-6 py-12 text-center text-slate-500">No active SKUs found.</td></tr>
+                <tr><td colSpan={6} className="px-6 py-12 text-center text-slate-500">No active SKUs found.</td></tr>
               ) : (
                 filteredBalances.map((/** @type {any} */ item) => {
                   const balances = item.variant_stock_balances?.[0] || { available: 0, reserved: 0, on_hand: 0 };
@@ -263,6 +261,20 @@ export default function Inventory() {
                       </td>
                       <td className="px-6 py-4 text-center font-medium text-amber-600 bg-amber-50/10">{balances.reserved || 0}</td>
                       <td className="px-6 py-4 text-center font-bold text-slate-900 bg-slate-50/50">{balances.on_hand || 0}</td>
+                      
+                      <td className="px-6 py-4">
+                        <div className="flex items-center justify-end gap-2">
+                          <button onClick={() => openModal('adjustment', item.id)} className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded transition-colors" title="Adjust Stock">
+                            <FileDigit size={16} />
+                          </button>
+                          <Link to="/products" className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors" title="Edit SKU Definition in Products">
+                            <Edit size={16} />
+                          </Link>
+                          <button onClick={() => setVariantToArchive(item)} className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors" title="Archive / Deactivate SKU">
+                            <Archive size={16} />
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   );
                 })
@@ -359,7 +371,6 @@ export default function Inventory() {
                 </div>
                 
                 <div className="p-6 space-y-6">
-                  {/* Core Details */}
                   <div className="space-y-4">
                     <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100 pb-2">Core Details</h3>
                     
@@ -421,7 +432,6 @@ export default function Inventory() {
                     </div>
                   </div>
 
-                  {/* Advanced Batch/Expiry Information */}
                   <div className={`space-y-4 pt-2 transition-opacity ${form.movement_type === 'receipt' || form.movement_type === 'transfer' ? 'opacity-100 block' : 'opacity-50 hidden md:block'}`}>
                     <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100 pb-2 flex items-center gap-2">
                       <Package size={14} /> Batch & Expiry Provenance
@@ -472,6 +482,25 @@ export default function Inventory() {
           </div>
         </div>
       )}
+
+      {variantToArchive && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden p-8 text-center animate-in fade-in zoom-in-95 duration-200">
+            <div className="w-16 h-16 bg-rose-50 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Archive size={28} className="text-rose-500" />
+            </div>
+            <h2 className="text-xl font-bold text-slate-900 mb-2">Archive SKU?</h2>
+            <p className="text-sm text-slate-500 mb-6">Are you sure you want to deactivate <strong>{variantToArchive.sku}</strong>? This securely preserves all ledger history and active orders, but hides the item from the storefront and inventory views.</p>
+            <div className="flex justify-center gap-3">
+              <button onClick={() => setVariantToArchive(null)} disabled={archiveVariantMutation.isPending} className="px-5 py-2.5 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg w-full transition-colors">Cancel</button>
+              <button onClick={() => archiveVariantMutation.mutate(variantToArchive.id)} disabled={archiveVariantMutation.isPending} className="px-5 py-2.5 text-sm font-medium bg-rose-500 hover:bg-rose-600 text-white rounded-lg w-full transition-colors flex items-center justify-center gap-2">
+                {archiveVariantMutation.isPending ? 'Archiving...' : 'Archive SKU'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

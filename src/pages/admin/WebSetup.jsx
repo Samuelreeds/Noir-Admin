@@ -89,7 +89,10 @@ export default function WebSetup() {
     store_genders: 'Men, Women, Unisex',
     shipping_pp_price: '1.50', shipping_province_price: '2.50', enable_tax: false, tax_rate: '8.00',
     ad_modal_enabled: false, ad_modal_image: '', ad_modal_image_file: null, ad_modal_image_preview: '', ad_modal_link: '/shop',
-    require_telegram_checkout: false
+    require_telegram_checkout: false,
+    product_trust_1: 'Complimentary global shipping over $250',
+    product_trust_2: '30-day returns on unworn garments',
+    product_trust_3: 'Authenticated & quality assured'
   };
 
   const defaultSliderForm = { id: null, image_url: '', image_file: null, image_preview: '', ordering: 0, status: true, cta_enabled: true, cta_link: '/shop', cta_text_en: 'Shop Now', cta_text_kh: 'ទិញឥឡូវនេះ' };
@@ -158,45 +161,75 @@ export default function WebSetup() {
         ad_modal_enabled: !!storeSettings.ad_modal_enabled,
         ad_modal_image_preview: storeSettings.ad_modal_image || '',
         ad_modal_link: storeSettings.ad_modal_link || '/shop',
-        require_telegram_checkout: !!storeSettings.require_telegram_checkout
+        require_telegram_checkout: !!storeSettings.require_telegram_checkout,
+        product_trust_1: storeSettings.product_trust_1 || 'Complimentary global shipping over $250',
+        product_trust_2: storeSettings.product_trust_2 || '30-day returns on unworn garments',
+        product_trust_3: storeSettings.product_trust_3 || 'Authenticated & quality assured'
       }));
     }
   }, [storeSettings]);
 
   const saveStoreSettingsMutation = useMutation({
     mutationFn: async () => {
-      let aboutUrl = storeForm.about_image;
-      if (storeForm.about_image_file) aboutUrl = await uploadAssetToSupabase(storeForm.about_image_file, 'about');
+      const payload = {};
 
-      let promoUrl = storeForm.promo_image;
-      if (storeForm.promo_image_file) promoUrl = await uploadAssetToSupabase(storeForm.promo_image_file, 'promo');
+      if (activeTab === 'about') {
+        let aboutUrl = storeForm.about_image;
+        if (storeForm.about_image_file) aboutUrl = await uploadAssetToSupabase(storeForm.about_image_file, 'about');
+        let promoUrl = storeForm.promo_image;
+        if (storeForm.promo_image_file) promoUrl = await uploadAssetToSupabase(storeForm.promo_image_file, 'promo');
 
-      let adModalUrl = storeForm.ad_modal_image;
-      if (storeForm.ad_modal_image_file) adModalUrl = await uploadAssetToSupabase(storeForm.ad_modal_image_file, 'ad_modal');
+        Object.assign(payload, {
+          hero_heading: storeForm.hero_heading, hero_subheading: storeForm.hero_subheading, hero_button_text: storeForm.hero_button_text, hero_button_link: storeForm.hero_button_link,
+          about_heading: storeForm.about_heading, about_text: storeForm.about_text, about_image: aboutUrl,
+          about_principles_heading: storeForm.about_principles_heading, about_p1_title: storeForm.about_p1_title, about_p1_desc: storeForm.about_p1_desc,
+          about_p2_title: storeForm.about_p2_title, about_p2_desc: storeForm.about_p2_desc, about_p3_title: storeForm.about_p3_title, about_p3_desc: storeForm.about_p3_desc,
+          about_cta_heading: storeForm.about_cta_heading, about_cta_button_text: storeForm.about_cta_button_text, about_cta_button_link: storeForm.about_cta_button_link,
+          promo_heading: storeForm.promo_heading, promo_subheading: storeForm.promo_subheading, promo_image: promoUrl, promo_button_text: storeForm.promo_button_text, promo_button_link: storeForm.promo_button_link,
+        });
+      } else if (activeTab === 'contact') {
+        Object.assign(payload, {
+          contact_email: storeForm.contact_email, contact_phone: storeForm.contact_phone, social_instagram: storeForm.social_instagram, contact_address: storeForm.contact_address,
+        });
+      } else if (activeTab === 'filters') {
+        Object.assign(payload, {
+          genders: storeForm.store_genders.split(',').map(s => s.trim()).filter(Boolean),
+        });
+      } else if (activeTab === 'shipping') {
+        Object.assign(payload, {
+          shipping_pp_price: parseFloat(storeForm.shipping_pp_price || '0'), shipping_province_price: parseFloat(storeForm.shipping_province_price || '0'),
+          enable_tax: storeForm.enable_tax, tax_rate: parseFloat(storeForm.tax_rate || '0'),
+          require_telegram_checkout: storeForm.require_telegram_checkout
+        });
+      } else if (activeTab === 'popup' || activeTab === 'advertisement') {
+        let adModalUrl = storeForm.ad_modal_image;
+        if (storeForm.ad_modal_image_file) adModalUrl = await uploadAssetToSupabase(storeForm.ad_modal_image_file, 'ad_modal');
+        Object.assign(payload, {
+          ad_modal_enabled: storeForm.ad_modal_enabled, ad_modal_image: adModalUrl, ad_modal_link: storeForm.ad_modal_link,
+        });
+      } else if (activeTab === 'product') {
+        Object.assign(payload, {
+          product_trust_1: storeForm.product_trust_1,
+          product_trust_2: storeForm.product_trust_2,
+          product_trust_3: storeForm.product_trust_3
+        });
+      }
 
-      const payload = {
-        id: 1,
-        hero_heading: storeForm.hero_heading, hero_subheading: storeForm.hero_subheading, hero_button_text: storeForm.hero_button_text, hero_button_link: storeForm.hero_button_link,
-        about_heading: storeForm.about_heading, about_text: storeForm.about_text, about_image: aboutUrl,
-        about_principles_heading: storeForm.about_principles_heading, about_p1_title: storeForm.about_p1_title, about_p1_desc: storeForm.about_p1_desc,
-        about_p2_title: storeForm.about_p2_title, about_p2_desc: storeForm.about_p2_desc, about_p3_title: storeForm.about_p3_title, about_p3_desc: storeForm.about_p3_desc,
-        about_cta_heading: storeForm.about_cta_heading, about_cta_button_text: storeForm.about_cta_button_text, about_cta_button_link: storeForm.about_cta_button_link,
-        promo_heading: storeForm.promo_heading, promo_subheading: storeForm.promo_subheading, promo_image: promoUrl, promo_button_text: storeForm.promo_button_text, promo_button_link: storeForm.promo_button_link,
-        contact_email: storeForm.contact_email, contact_phone: storeForm.contact_phone, social_instagram: storeForm.social_instagram, contact_address: storeForm.contact_address,
-        genders: storeForm.store_genders.split(',').map(s => s.trim()).filter(Boolean),
-        shipping_pp_price: parseFloat(storeForm.shipping_pp_price || '0'), shipping_province_price: parseFloat(storeForm.shipping_province_price || '0'),
-        enable_tax: storeForm.enable_tax, tax_rate: parseFloat(storeForm.tax_rate || '0'),
-        ad_modal_enabled: storeForm.ad_modal_enabled, ad_modal_image: adModalUrl, ad_modal_link: storeForm.ad_modal_link,
-        require_telegram_checkout: storeForm.require_telegram_checkout
-      };
-
-      const { error } = await supabase.from('store_settings').upsert(payload);
-      if (error) throw error;
+      if (Object.keys(payload).length > 0) {
+        // Use strict .update() instead of .upsert() to ensure unrelated columns are left untouched
+        const { error } = await supabase.from('store_settings').update(payload).eq('id', 1);
+        if (error) throw error;
+      }
       return payload;
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['admin-store-settings'] });
-      setStoreForm(prev => ({ ...prev, about_image_file: null, about_image: data.about_image, promo_image_file: null, promo_image: data.promo_image, ad_modal_image_file: null, ad_modal_image: data.ad_modal_image }));
+      setStoreForm(prev => ({ 
+        ...prev, 
+        about_image_file: null, about_image: data.about_image || prev.about_image, 
+        promo_image_file: null, promo_image: data.promo_image || prev.promo_image, 
+        ad_modal_image_file: null, ad_modal_image: data.ad_modal_image || prev.ad_modal_image 
+      }));
       setSaveSuccess(true); setTimeout(() => setSaveSuccess(false), 3000);
     },
     onError: (err) => alert(err.message)
@@ -427,13 +460,18 @@ export default function WebSetup() {
           </div>
         )}
 
-        {['popup', 'advertisement', 'about', 'contact', 'filters', 'shipping'].includes(activeTab) && (
+        {/* INCLUDED 'product' IN THE ACTIVE TAB CHECK */}
+        {['popup', 'advertisement', 'about', 'contact', 'filters', 'shipping', 'product'].includes(activeTab) && (
           <div className="w-full">
             <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden flex flex-col w-full">
               
               <div className="bg-slate-50 p-6 flex justify-between items-center border-b border-slate-200">
                 <h1 className="text-xl font-bold text-slate-800 uppercase tracking-wide">
-                  {activeTab === 'about' ? 'Banners & About Section' : activeTab === 'contact' ? 'Footer & Contact' : activeTab === 'filters' ? 'Store Filters' : activeTab === 'popup' || activeTab === 'advertisement' ? 'Advertisement Modal' : 'Shipping & Checkout'}
+                  {activeTab === 'about' ? 'Banners & About Section' : 
+                   activeTab === 'contact' ? 'Footer & Contact' : 
+                   activeTab === 'filters' ? 'Store Filters' : 
+                   activeTab === 'popup' || activeTab === 'advertisement' ? 'Advertisement Modal' : 
+                   activeTab === 'product' ? 'Product Page Settings' : 'Shipping & Checkout'}
                 </h1>
                 <button onClick={() => saveStoreSettingsMutation.mutate()} disabled={saveStoreSettingsMutation.isPending} className="flex items-center gap-2 px-5 py-2.5 bg-slate-900 text-white hover:bg-slate-800 rounded font-medium text-sm transition-all disabled:opacity-50">
                   {saveStoreSettingsMutation.isPending ? <RefreshCcw size={16} className="animate-spin" /> : saveSuccess ? <CheckCircle size={16} className="text-emerald-400" /> : <Save size={16} />} Save Changes
@@ -638,7 +676,7 @@ export default function WebSetup() {
                       )}
                     </div>
 
-                    {/* NEW SECTION: REQUIRE TELEGRAM FOR CHECKOUT */}
+                    {/* REQUIRE TELEGRAM FOR CHECKOUT */}
                     <div className="border-t border-slate-200 pt-6">
                       <div className="flex items-center justify-between bg-emerald-50 p-5 rounded-lg border border-emerald-200">
                         <div>
@@ -648,6 +686,17 @@ export default function WebSetup() {
                         <ToggleSwitch checked={storeForm.require_telegram_checkout} onChange={val => setStoreForm({...storeForm, require_telegram_checkout: val})} />
                       </div>
                     </div>
+                  </div>
+                )}
+
+                {/* --- ADDED: NEW PRODUCT TAB JSX --- */}
+                {activeTab === 'product' && (
+                  <div className="space-y-6">
+                    <h3 className="text-base font-bold text-slate-800 uppercase tracking-wide border-b border-slate-200 pb-2">Product Trust Badges</h3>
+                    <p className="text-xs text-slate-500 mb-4">These appear below the Add to Bag button on every product detail page.</p>
+                    <div><label className="block text-xs font-semibold text-slate-600 uppercase mb-2">Badge 1 (Shipping Info)</label><input type="text" value={storeForm.product_trust_1} onChange={e => setStoreForm({...storeForm, product_trust_1: e.target.value})} className="w-full border border-slate-300 rounded p-3 text-sm" /></div>
+                    <div><label className="block text-xs font-semibold text-slate-600 uppercase mb-2">Badge 2 (Return Policy)</label><input type="text" value={storeForm.product_trust_2} onChange={e => setStoreForm({...storeForm, product_trust_2: e.target.value})} className="w-full border border-slate-300 rounded p-3 text-sm" /></div>
+                    <div><label className="block text-xs font-semibold text-slate-600 uppercase mb-2">Badge 3 (Quality Assurance)</label><input type="text" value={storeForm.product_trust_3} onChange={e => setStoreForm({...storeForm, product_trust_3: e.target.value})} className="w-full border border-slate-300 rounded p-3 text-sm" /></div>
                   </div>
                 )}
               </div>
@@ -678,7 +727,6 @@ export default function WebSetup() {
             </div>
             <div className="p-6 overflow-y-auto custom-scrollbar space-y-5">
               
-              {/* CHANGED: This image upload box now respects a 4:5 aspect ratio and recommends 2160x2700 */}
               <div>
                 <label className="block text-xs font-semibold text-slate-600 uppercase mb-2">Event Image (Poster)</label>
                 <div className="border-2 border-dashed border-slate-300 rounded-lg p-6 bg-slate-50 hover:bg-slate-100 transition-colors text-center relative flex flex-col items-center min-h-[220px]">
