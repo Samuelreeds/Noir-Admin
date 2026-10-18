@@ -41,7 +41,7 @@ export default function Inventory() {
       const { data: variants, error } = await supabase
         .from('product_variants')
         .select(`
-          id, sku, size, scent, price,
+          id, sku, size, scent, price, images,
           products ( name, image )
         `)
         .eq('is_active', true)
@@ -87,7 +87,7 @@ export default function Inventory() {
     }
   });
 
-  // MUTATION: Ledger Movements (Reuses existing inventory functions)
+  // MUTATION: Ledger Movements
   const recordMovementMutation = useMutation({
     mutationFn: async () => {
       if (!form.variant_id || !form.quantity || !form.movement_type) {
@@ -177,7 +177,7 @@ export default function Inventory() {
   const filteredBalances = stockBalances.filter((/** @type {any} */ item) => {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
-    const str = `${item.sku} ${item.products?.name} ${item.size}`.toLowerCase();
+    const str = `${item.sku} ${item.products?.name} ${item.size} ${item.scent}`.toLowerCase();
     return str.includes(q);
   });
 
@@ -240,13 +240,16 @@ export default function Inventory() {
                   const balances = item.variant_stock_balances?.[0] || { available: 0, reserved: 0, on_hand: 0 };
                   const isLowStock = balances.available <= 10;
                   
+                  // Extract the specific variant's image first, falling back to the parent image if none exists
+                  const thumbnail = (item.images && item.images.length > 0) ? item.images[0] : item.products?.image;
+                  
                   return (
                     <tr key={item.id} className="hover:bg-slate-50">
                       <td className="px-6 py-4 font-mono text-xs font-bold text-slate-700">{item.sku}</td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
                           <div className="w-8 h-8 rounded bg-slate-100 border border-slate-200 overflow-hidden shrink-0">
-                            {item.products?.image ? <img src={item.products.image} alt={item.products.name} className="w-full h-full object-cover" /> : <Package size={14} className="m-auto mt-2 text-slate-400" />}
+                            {thumbnail ? <img src={thumbnail} alt={item.products?.name} className="w-full h-full object-cover" /> : <Package size={14} className="m-auto mt-2 text-slate-400" />}
                           </div>
                           <div>
                             <p className="font-medium text-slate-900">{item.products?.name}</p>
@@ -380,7 +383,7 @@ export default function Inventory() {
                         <option value="">-- Choose SKU --</option>
                         {stockBalances.map((/** @type {any} */ item) => (
                           <option key={item.id} value={item.id}>
-                            {item.sku} | {item.products?.name} {item.size ? `(${item.size})` : ''}
+                            {item.sku} | {item.products?.name} {item.size ? `(${item.size})` : ''} {item.scent ? `[${item.scent}]` : ''}
                           </option>
                         ))}
                       </select>
@@ -459,7 +462,7 @@ export default function Inventory() {
                         </div>
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-slate-600 uppercase mb-2 text-amber-700">Expiry Date</label>
+                        <label className="block text-xs font-bold text-slate-600 uppercase mb-2 text-amber-700">Expiry Date</label>
                         <div className="relative">
                           <Calendar size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-amber-500" />
                           <input type="date" value={form.expiry_date} onChange={(e) => setForm({...form, expiry_date: e.target.value})} className="w-full border border-amber-200 rounded p-3 pl-9 text-sm outline-none focus:border-amber-400 bg-amber-50/30 cursor-pointer" />
