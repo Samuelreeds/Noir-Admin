@@ -50,6 +50,33 @@ const uploadImageToSupabase = async (/** @type {File} */ file) => {
   return data.publicUrl;
 };
 
+// --- DATA PARSING HELPERS ---
+const parseTagsSafely = (tagsData) => {
+  if (!tagsData) return '';
+  if (Array.isArray(tagsData)) return tagsData.join(', ');
+  if (typeof tagsData === 'string') {
+    try {
+      // Try to parse it as JSON (handles the ["tag1", "tag2"] case)
+      let parsed = JSON.parse(tagsData);
+      
+      // If the result is a string (handles the double-stringified "[\"tag1\"]" case), parse again
+      while (typeof parsed === 'string') {
+        try { parsed = JSON.parse(parsed); } 
+        catch (e) { break; }
+      }
+      
+      if (Array.isArray(parsed)) {
+        return parsed.map(t => typeof t === 'string' ? t.replace(/[[\]"\\]/g, '').trim() : t).filter(Boolean).join(', ');
+      }
+      return parsed;
+    } catch (e) {
+      // If it's just a raw comma-separated string, return it, but strip garbage brackets just in case
+      return tagsData.replace(/[[\]"\\]/g, '').trim();
+    }
+  }
+  return '';
+};
+
 // --- UI COMPONENTS ---
 const ToggleSwitch = ({ checked, onChange, label = '', labelLeft = '' }) => (
   <div className="flex items-center justify-between py-1">
@@ -85,9 +112,8 @@ export default function Products() {
     show_in_search: true, is_promotion: false, featured: false, status: true, 
     ordering: 0, category_list: /** @type {string[]} */ ([]), 
     
-    // Unified File Handling: All raw files go here
     newUploads: /** @type {{blobUrl: string, file: File}[]} */ ([]), 
-    images: /** @type {string[]} */ ([]), // Array of strings (Supa URLs or blob URLs)
+    images: /** @type {string[]} */ ([]), 
     
     description: '', description_khmer: '', how_it_works: '', how_it_works_khmer: '',
     key_ingredients: '', key_ingredients_khmer: '', faqs: '', faqs_khmer: '',
@@ -163,7 +189,6 @@ export default function Products() {
         blobToUrlMap[item.blobUrl] = await uploadImageToSupabase(item.file);
       }
 
-      // Helper to replace temporary blob URLs with final cloud URLs
       const mapUrls = (/** @type {string[]} */ urls) => (urls || [])
         .map(url => url.startsWith('blob:') ? blobToUrlMap[url] : url)
         .filter(Boolean);
@@ -175,7 +200,8 @@ export default function Products() {
       const productPayload = {
         name: form.name, name_khmer: form.name_khmer || null, code: form.code || `PRD-${Math.floor(1000 + Math.random() * 9000)}`,
         overview: form.overview || null, overview_khmer: form.overview_khmer || null,
-        product_type: form.product_type || null, tags: form.tags ? form.tags.split(',').map(t => t.trim()).filter(Boolean) : null,
+        product_type: form.product_type || null, 
+        tags: form.tags ? form.tags.split(',').map(t => t.trim()).filter(Boolean) : null,
         is_best_seller: form.is_best_seller, product_set: form.product_set || null, show_in_search: form.show_in_search,
         is_promotion: form.is_promotion, featured: form.featured, status: form.status ? 'active' : 'inactive',
         ordering: parseInt(form.ordering.toString()) || 0,
@@ -295,7 +321,7 @@ export default function Products() {
       overview: p.overview || '', 
       overview_khmer: p.overview_khmer || '', 
       product_type: p.product_type || '', 
-      tags: Array.isArray(p.tags) ? p.tags.join(', ') : (p.tags || ''), 
+      tags: parseTagsSafely(p.tags), 
       is_best_seller: !!p.is_best_seller, 
       product_set: p.product_set || '', 
       show_in_search: p.show_in_search !== false, 
@@ -356,7 +382,6 @@ export default function Products() {
     });
   };
 
-  // --- NEW: Upload Image directly from the Modal ---
   const handleModalFileUpload = (/** @type {any} */ e) => {
     const files = Array.from(e.target.files);
     if (!files.length || imagePickerVariantIndex === null) return;
@@ -371,7 +396,7 @@ export default function Products() {
       return {
         ...prev,
         newUploads: [...(prev.newUploads || []), ...newItems],
-        images: [...prev.images, ...newItems.map(i => i.blobUrl)], // Auto-collects in Master Media
+        images: [...prev.images, ...newItems.map(i => i.blobUrl)],
         variants: vars
       };
     });
@@ -433,7 +458,6 @@ export default function Products() {
     ...form.variants.flatMap((v, vIdx) => (v.images || []).map((url, iIdx) => ({ url, type: 'variant', vIdx, iIdx })))
   ];
   
-  // Deduped collection for the modal picker
   const uniqueModalImageUrls = Array.from(new Set(allCollectedImages.map(img => img.url)));
 
   return (
@@ -628,7 +652,7 @@ export default function Products() {
                       </div>
                     </div>
 
-                    {/* Master Image Upload Area (Aggregated) */}
+                    {/* Master Image Upload Area */}
                     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                        <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50">
                         <h3 className="font-bold text-slate-800">Master Product Media</h3>
@@ -748,7 +772,6 @@ export default function Products() {
 
                         <div className="p-6 flex flex-col xl:flex-row gap-8">
                           
-                          {/* Pick From Master Image Strip */}
                           <div className="w-full xl:w-1/3">
                             <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-3">Variant Images</label>
                             <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 flex gap-3 overflow-x-auto custom-scrollbar min-h-[120px]">
@@ -854,7 +877,7 @@ export default function Products() {
         </div>
       )}
 
-      {/* MASTER MEDIA IMAGE PICKER MODAL (WITH UPLOAD OPTION) */}
+      {/* MASTER MEDIA IMAGE PICKER MODAL */}
       {imagePickerVariantIndex !== null && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">

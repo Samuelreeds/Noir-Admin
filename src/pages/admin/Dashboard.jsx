@@ -28,18 +28,44 @@ const KpiCard = ({ label = "", value = "", sub = "", icon: Icon, accent = "" }) 
 );
 
 export default function AdminDashboard() {
-  // Date Filtering State (Default: Last 30 Days)
-  const [dateRange, setDateRange] = useState('30D');
+  // Date Filtering State (Default: Today)
+  const [dateRange, setDateRange] = useState('Today');
   
   const getDateBounds = () => {
-    const end = new Date();
-    const start = new Date();
-    if (dateRange === '7D') start.setDate(end.getDate() - 7);
-    else if (dateRange === '30D') start.setDate(end.getDate() - 30);
-    else if (dateRange === 'MTD') start.setDate(1);
-    else if (dateRange === 'YTD') { start.setMonth(0, 1); }
-    else return { start: null, end: null }; // All Time
-    return { start: start.toISOString().split('T')[0], end: end.toISOString().split('T')[0] };
+    const now = new Date();
+    let start = new Date();
+    let end = new Date();
+
+    switch (dateRange) {
+      case 'Today':
+        start.setHours(0, 0, 0, 0);
+        end.setHours(23, 59, 59, 999);
+        break;
+      case '7D':
+        start.setDate(now.getDate() - 7);
+        break;
+      case '30D':
+        start.setDate(now.getDate() - 30);
+        break;
+      case 'MTD':
+        start.setDate(1);
+        start.setHours(0, 0, 0, 0);
+        break;
+      case 'YTD':
+        start.setMonth(0, 1);
+        start.setHours(0, 0, 0, 0);
+        break;
+      case 'ALL':
+        return { start: null, end: null }; // All Time
+      default:
+        return { start: null, end: null };
+    }
+
+    // Return full ISO strings to guarantee precise database filtering
+    return { 
+      start: start.toISOString(), 
+      end: end.toISOString() 
+    };
   };
 
   const bounds = getDateBounds();
@@ -88,6 +114,7 @@ export default function AdminDashboard() {
             onChange={(e) => setDateRange(e.target.value)} 
             className="text-sm font-semibold bg-transparent border-none outline-none cursor-pointer pr-4 text-slate-700"
           >
+            <option value="Today">Today</option>
             <option value="7D">Last 7 Days</option>
             <option value="30D">Last 30 Days</option>
             <option value="MTD">Month to Date</option>
@@ -104,7 +131,7 @@ export default function AdminDashboard() {
       <div>
         <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-4 border-b border-slate-100 pb-2">Financial Performance {dateRange !== 'ALL' && <span className="text-slate-400 font-normal">({dateRange})</span>}</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-          <KpiCard label="Net Sales" value={formatPrice(stats.netSales)} sub="Gross sales minus processed refunds" icon={TrendingUp} accent="border-b-4 border-b-slate-900" />
+          <KpiCard label="Net Sales" value={formatPrice(stats.netSales)} sub="Gross sales including refund" icon={TrendingUp} accent="border-b-4 border-b-slate-900" />
           <KpiCard label="Avg Order Value" value={formatPrice(stats.aov)} sub="Per paid/completed order" icon={DollarSign} />
           <KpiCard label="Total Orders" value={stats.totalOrders} sub="Paid or partially refunded" icon={ShoppingBag} />
           <KpiCard label="Refunded Value" value={formatPrice(stats.totalRefunds)} sub="Formally restocked via credit notes" icon={ArrowRightLeft} accent="border-b-4 border-b-rose-500" />
