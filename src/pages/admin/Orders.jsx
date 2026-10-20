@@ -122,6 +122,8 @@ export default function Orders() {
   const [paymentFilter, setPaymentFilter] = useState('All Payment');
   const [currencyFilter, setCurrencyFilter] = useState('All Currency');
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // NEW: Dedicated Date Range States
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   
@@ -227,14 +229,25 @@ export default function Orders() {
     onError: (err) => alert("Failed to process return: " + err.message)
   });
 
-  // Export handling logic: Bypasses pagination and uses RPC if no specific rows are selected
+  // EXPORT LOGIC UPDATED TO PASS DATES
+  // NEW: Pass all applied table filters to the backend RPC for consistent full-database exports
   const exportAllOrdersMutation = useMutation({
     mutationFn: async () => {
-      const { data, error } = await supabase.rpc('export_all_orders');
+      const { data, error } = await supabase.rpc('export_all_orders', {
+        p_start_date: dateFrom || null,
+        p_end_date: dateTo || null,
+        p_fulfilment_status: fulfilmentFilter !== 'All Fulfilment' ? fulfilmentFilter : null,
+        p_payment_status: paymentFilter !== 'All Payment' ? paymentFilter : null,
+        p_currency: currencyFilter !== 'All Currency' ? currencyFilter : null,
+        p_search_query: searchQuery || null
+      });
       if (error) throw error;
       return data;
     },
-    onSuccess: (serverData) => processCSVExport(serverData, 'FULL_DATABASE'),
+    onSuccess: (serverData) => {
+      const isFiltered = dateFrom || dateTo || searchQuery || fulfilmentFilter !== 'All Fulfilment' || paymentFilter !== 'All Payment';
+      processCSVExport(serverData, isFiltered ? 'FILTERED_DATABASE' : 'FULL_DATABASE');
+    },
     onError: (err) => alert("Export failed: " + err.message)
   });
 
@@ -271,6 +284,7 @@ export default function Orders() {
     }
   };
 
+  // Reset pagination and selection if any filter changes
   useEffect(() => { setCurrentPage(1); setSelectedOrderIds([]); }, [fulfilmentFilter, paymentFilter, currencyFilter, searchQuery, dateFrom, dateTo]);
 
   const filteredOrders = orders.filter((/** @type {any} */ order) => {
@@ -286,11 +300,15 @@ export default function Orders() {
       const searchString = `${order.id} ${addr.name || ''} ${addr.phone || ''} ${addr.address || ''} ${addr.province || ''} ${order.tracking_number || ''} ${order.invoice_number || ''}`.toLowerCase();
       if (!searchString.includes(q)) return false;
     }
-    if (dateFrom && new Date(order.created_at) < new Date(dateFrom)) return false;
+    
+    // NEW: Accurate Client-Side Inclusive Date Filtering
+    if (dateFrom) {
+      const fromBoundary = new Date(`${dateFrom}T00:00:00.000`);
+      if (new Date(order.created_at) < fromBoundary) return false;
+    }
     if (dateTo) {
-      const toDate = new Date(dateTo);
-      toDate.setHours(23, 59, 59, 999);
-      if (new Date(order.created_at) > toDate) return false;
+      const toBoundary = new Date(`${dateTo}T23:59:59.999`);
+      if (new Date(order.created_at) > toBoundary) return false;
     }
     return true;
   });
@@ -357,43 +375,69 @@ export default function Orders() {
     <>
       <div className="w-full bg-white rounded-md shadow-sm border border-slate-200 relative flex flex-col h-[calc(100vh-8rem)] print:hidden">
         
-        <div className="p-4 border-b border-slate-200 flex flex-wrap gap-4 items-center justify-between bg-slate-50/50 shrink-0">
-          <div className="flex items-center gap-3 flex-wrap">
-            <select value={fulfilmentFilter} onChange={(e) => setFulfilmentFilter(e.target.value)} className="border border-slate-300 rounded px-3 py-2 text-sm bg-white outline-none cursor-pointer">
-              <option>All Fulfilment</option>
-              <option value="Unconfirmed">Unconfirmed</option>
-              <option value="Picking">Picking</option>
-              <option value="Packed">Packed</option>
-              <option value="Shipped / Out for Delivery">Shipped / Out for Delivery</option>
-              <option value="Delivered">Delivered</option>
-              <option value="Failed Delivery">Failed Delivery</option>
-              <option value="Cancelled">Cancelled</option>
-              <option value="Returned">Returned</option>
-            </select>
-            <select value={paymentFilter} onChange={(e) => setPaymentFilter(e.target.value)} className="border border-slate-300 rounded px-3 py-2 text-sm bg-white outline-none cursor-pointer">
-              <option>All Payment</option>
-              <option value="Unpaid">Unpaid</option>
-              <option value="Pending Verification">Pending Verification</option>
-              <option value="Paid">Paid</option>
-              <option value="Failed">Failed</option>
-              <option value="Partially Refunded">Partially Refunded</option>
-              <option value="Refunded">Refunded</option>
-            </select>
-            <div className="relative">
+        {/* --- RESPONSIVE FILTER BAR --- */}
+        <div className="p-4 border-b border-slate-200 flex flex-col bg-slate-50/50 shrink-0 gap-4">
+          <div className="flex flex-col xl:flex-row xl:items-center gap-3 w-full">
+            
+            {/* Status Selects */}
+            <div className="flex flex-col sm:flex-row gap-3 w-full xl:w-auto">
+              <select value={fulfilmentFilter} onChange={(e) => setFulfilmentFilter(e.target.value)} className="border border-slate-300 rounded px-3 py-2 text-sm bg-white outline-none cursor-pointer w-full sm:w-auto">
+                <option>All Fulfilment</option>
+                <option value="Unconfirmed">Unconfirmed</option>
+                <option value="Picking">Picking</option>
+                <option value="Packed">Packed</option>
+                <option value="Shipped / Out for Delivery">Shipped / Out for Delivery</option>
+                <option value="Delivered">Delivered</option>
+                <option value="Failed Delivery">Failed Delivery</option>
+                <option value="Cancelled">Cancelled</option>
+                <option value="Returned">Returned</option>
+              </select>
+              <select value={paymentFilter} onChange={(e) => setPaymentFilter(e.target.value)} className="border border-slate-300 rounded px-3 py-2 text-sm bg-white outline-none cursor-pointer w-full sm:w-auto">
+                <option>All Payment</option>
+                <option value="Unpaid">Unpaid</option>
+                <option value="Pending Verification">Pending Verification</option>
+                <option value="Paid">Paid</option>
+                <option value="Failed">Failed</option>
+                <option value="Partially Refunded">Partially Refunded</option>
+                <option value="Refunded">Refunded</option>
+              </select>
+            </div>
+            
+            {/* Date Range Filters */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full xl:w-auto">
+              <div className="flex items-center border border-slate-300 rounded overflow-hidden bg-white w-full sm:w-auto">
+                <span className="bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-500 border-r border-slate-300">FROM</span>
+                <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="px-3 py-1.5 sm:py-1 text-sm outline-none cursor-pointer text-slate-700 w-full" />
+              </div>
+              <div className="flex items-center border border-slate-300 rounded overflow-hidden bg-white w-full sm:w-auto">
+                <span className="bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-500 border-r border-slate-300">TO</span>
+                <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="px-3 py-1.5 sm:py-1 text-sm outline-none cursor-pointer text-slate-700 w-full" />
+              </div>
+              {(dateFrom || dateTo) && (
+                <button onClick={() => { setDateFrom(''); setDateTo(''); }} className="text-xs text-rose-500 hover:text-rose-700 font-bold px-2 py-2 sm:py-0 flex items-center justify-center gap-1 w-full sm:w-auto">
+                  <X size={14} /> Clear
+                </button>
+              )}
+            </div>
+
+            {/* Search Bar */}
+            <div className="relative w-full xl:w-auto xl:ml-auto">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search Invoice No, ID, or name..." className="border border-slate-300 rounded pl-9 pr-4 py-2 text-sm w-[250px] outline-none focus:border-slate-500" />
+              <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search Invoice No, ID, or name..." className="border border-slate-300 rounded pl-9 pr-4 py-2 text-sm w-full xl:w-[250px] outline-none focus:border-slate-500" />
             </div>
           </div>
         </div>
 
-        <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-3">
-            <button onClick={() => { queryClient.invalidateQueries({ queryKey: ['admin-orders'] }); refetch(); }} className="flex items-center gap-2 px-3 py-1.5 border border-slate-300 rounded text-sm hover:bg-slate-50 transition-colors">
+        {/* --- RESPONSIVE ACTION BAR --- */}
+        <div className="px-4 py-3 border-b border-slate-200 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 shrink-0">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
+            <button onClick={() => { queryClient.invalidateQueries({ queryKey: ['admin-orders'] }); refetch(); }} className="flex justify-center items-center gap-2 px-3 py-2 sm:py-1.5 border border-slate-300 rounded text-sm hover:bg-slate-50 transition-colors w-full sm:w-auto">
               <RefreshCcw size={14} className={isFetching ? "animate-spin" : ""} /> Refresh
             </button>
-            <button onClick={handleExport} disabled={exportAllOrdersMutation.isPending} className="flex items-center gap-2 px-3 py-1.5 bg-slate-800 text-white rounded text-sm hover:bg-slate-700 transition-colors disabled:opacity-50">
+            <button onClick={handleExport} disabled={exportAllOrdersMutation.isPending} className="flex justify-center items-center gap-2 px-3 py-2 sm:py-1.5 bg-slate-800 text-white rounded text-sm hover:bg-slate-700 transition-colors disabled:opacity-50 w-full sm:w-auto">
               {exportAllOrdersMutation.isPending ? <RefreshCcw size={14} className="animate-spin" /> : <Download size={14} />} 
-              {selectedOrderIds.length > 0 ? `Export Selected (${selectedOrderIds.length})` : 'Export All Database Records'}
+              <span className="hidden sm:inline">{selectedOrderIds.length > 0 ? `Export Selected (${selectedOrderIds.length})` : 'Export All Database Records'}</span>
+              <span className="sm:hidden">{selectedOrderIds.length > 0 ? `Export (${selectedOrderIds.length})` : 'Export Records'}</span>
             </button>
           </div>
         </div>
